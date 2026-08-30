@@ -14,11 +14,20 @@
 <title>CoVoit</title>
 </head>
 <body>
+<style>
+  #boot{position:fixed;inset:0;display:grid;place-items:center;background:#0b0c12;z-index:5}
+  @media(prefers-color-scheme:light){#boot{background:#fafafb}}
+  #boot .m{width:52px;height:52px;border-radius:15px;background:linear-gradient(150deg,#4f46e5,#6366f1);
+    display:grid;place-items:center;color:#fff;font:800 22px/1 -apple-system,Segoe UI,Roboto,sans-serif;letter-spacing:-1px;
+    animation:bp 1.1s ease-in-out infinite}
+  @keyframes bp{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.9);opacity:.72}}
+</style>
 <div class="app" id="app">
   <div class="topbar" id="topbar" hidden></div>
   <div class="screen" id="screen"></div>
   <nav class="nav" id="nav" hidden></nav>
 </div>
+<div id="boot"><div class="m">Co</div></div>
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
 <div class="toast" id="toast"></div>

@@ -5,6 +5,7 @@ import { store, loadAll } from './lib/store.js';
 import * as api from './lib/api.js';
 import { CV, enterApp, renderTopbar, render } from './app.js';
 import { AV, renderAuth } from './auth.js';
+import { toast } from './lib/util.js';
 
 // expose inline-handler namespaces
 window.CV = CV;
@@ -16,8 +17,10 @@ try { const t=localStorage.getItem('cv_theme'); if(t) store.theme=t;
 } catch(e){}
 document.documentElement.setAttribute('data-theme', store.theme);
 
+const killBoot = () => document.getElementById('boot')?.remove();
 let booted=false;
 async function boot(session){
+  killBoot();
   if(!CONFIG_OK){
     document.getElementById('topbar').hidden=true; document.getElementById('nav').hidden=true;
     document.getElementById('screen').innerHTML =
@@ -37,10 +40,17 @@ async function boot(session){
       if(code){ try{ await api.joinGroup(code); }catch(e){} }
     }catch(e){}
   }
-  const ok = await loadAll();
-  if(!ok){ renderAuth(); return; }
+  try{
+    const ok = await loadAll();
+    if(!ok){ renderAuth(); return; }
+  }catch(e){
+    // Never freeze on a data error — enter the app with whatever loaded and tell the user.
+    console.error('Initial load error:', e);
+    store.groups = store.groups || []; store.rides = store.rides || []; store.notifications = store.notifications || [];
+    setTimeout(() => toast('Some data didn’t load — reopen a tab to retry'), 400);
+  }
   store.tab='home'; enterApp();
-  subscribeRealtime(session.user.id);
+  try{ subscribeRealtime(session.user.id); }catch(e){}
 }
 
 // live notification badge + list updates

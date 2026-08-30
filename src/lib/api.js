@@ -41,7 +41,7 @@ export async function uploadAvatar(userId, file) {
 // ---------- GROUPS ----------
 export async function myGroups() {
   const { data, error } = await supabase
-    .from('group_members').select('group:groups(*), members:groups(id)')
+    .from('group_members').select('group:groups(*)')
     .order('joined_at', { ascending: true });
   if (error) throw error;
   return (data || []).map(r => r.group).filter(Boolean);
