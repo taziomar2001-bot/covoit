@@ -569,12 +569,18 @@ function pickAddrG(i){ const s=(window._acg||[])[i]; if(!s)return; cgDraft.dest=
 async function doCreateGroup(){
   const name=$('#cg-name').value.trim(); cgDraft.desc=$('#cg-desc').value.trim();
   if(!name){ toast('Name your group'); return; }
-  if(!cgDraft.dest){ toast('Pick a default destination'); return; }
   const btn=$('#cgbtn'); if(btn){btn.disabled=true;btn.textContent='Creating…';}
-  try{ const g=await api.createGroup({name, description:cgDraft.desc, dest:cgDraft.dest});
+  try{
+    // If they typed a destination but didn't tap a suggestion, resolve it now.
+    if(!cgDraft.dest){
+      const q=($('#cg-dest')?.value||'').trim();
+      if(q){ const res=await geocode(q, store.myLoc); if(res.length) cgDraft.dest=res[0]; }
+    }
+    if(!cgDraft.dest){ if(btn){btn.disabled=false;btn.textContent='Create group';} toast('Type a destination and pick a suggestion'); return; }
+    const g=await api.createGroup({name, description:cgDraft.desc, dest:cgDraft.dest});
     await loadGroups(); store.currentGroup=g.id; closeSheet();
     setTimeout(async()=>{ toast('Group created · code '+g.invite_code); await loadRides(); store.tab='group'; renderTopbar(); renderNav(); render(); },220);
-  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Create group';} toast('Could not create group'); }
+  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Create group';} toast('Could not create group: '+(e.message||e.code||'error')); }
 }
 
 /* ===================== TIME FILTER / THEME ===================== */

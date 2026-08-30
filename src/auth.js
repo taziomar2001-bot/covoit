@@ -16,7 +16,9 @@ function viewLogin(){
     <div class="auth-top"><div class="auth-logo">Co</div><div class="auth-h">Welcome back</div><div class="auth-p">Sign in to see who's heading to campus.</div></div>
     <div class="auth-form">
       <div class="field"><label class="label">Email</label><input class="inp" id="li-email" type="email" placeholder="you@university.edu"></div>
-      <div class="field"><label class="label">Password</label><input class="inp" id="li-pass" type="password" placeholder="••••••••"></div>
+      <div class="field"><label class="label">Password</label>
+        <div style="position:relative"><input class="inp" id="li-pass" type="password" placeholder="••••••••" style="padding-right:74px">
+        <button type="button" onclick="AV.togglePw('li-pass',this)" style="position:absolute;right:8px;top:8px;bottom:8px;padding:0 12px;font-size:12.5px;font-weight:600;color:var(--accent);background:transparent">Show</button></div></div>
       <div style="text-align:right;margin:-6px 2px 16px"><a class="mut" style="font-size:13px" onclick="AV.forgot()">Forgot password?</a></div>
       <button class="btn primary" id="li-btn" onclick="AV.login()">Log in</button>
     </div>
@@ -31,7 +33,9 @@ function viewSignup(){
       <div class="grid2"><div class="field"><label class="label">First name</label><input class="inp" id="su-first" placeholder="Omar"></div><div class="field"><label class="label">Last name</label><input class="inp" id="su-last" placeholder="Tazi"></div></div>
       <div class="field"><label class="label">Email</label><input class="inp" id="su-email" type="email" placeholder="you@university.edu"></div>
       <div class="field"><label class="label">Phone number</label><input class="inp" id="su-phone" type="tel" placeholder="+34 600 000 000"><div class="mut" style="font-size:12px;margin-top:7px;display:flex;gap:7px;align-items:flex-start">${I.info}<span>Only shared with people you actually share a ride with — never public to the group.</span></div></div>
-      <div class="field"><label class="label">Password</label><input class="inp" id="su-pass" type="password" placeholder="Choose a password (min 6 chars)"></div>
+      <div class="field"><label class="label">Password</label>
+        <div style="position:relative"><input class="inp" id="su-pass" type="password" placeholder="Choose a password (min 6 chars)" style="padding-right:74px">
+        <button type="button" onclick="AV.togglePw('su-pass',this)" style="position:absolute;right:8px;top:8px;bottom:8px;padding:0 12px;font-size:12.5px;font-weight:600;color:var(--accent);background:transparent">Show</button></div></div>
       <div class="switch" onclick="AV.toggleCar()"><div><div class="st">I have a car</div><div class="sd">Add vehicle details later in Profile</div></div><div class="tog ${signupHasCar?'on':''}" id="su-cartog"></div></div>
       <div class="field"><label class="label">Group invite code <span class="mut">· optional</span></label><input class="inp" id="su-code" placeholder="e.g. MIM27" style="text-transform:uppercase"><div class="mut" style="font-size:12px;margin-top:7px;display:flex;gap:7px;align-items:flex-start">${I.info}<span>Have a code from a classmate? Enter it and your group's rides are ready the moment you're in.</span></div></div>
       <button class="btn primary" id="su-btn" onclick="AV.signup()">Create account</button>
@@ -86,4 +90,7 @@ function friendly(e){ const m=String(e.message||e).toLowerCase();
   if(m.includes('rate')) return 'Too many attempts — wait a moment';
   return e.message||'Something went wrong'; }
 
-export const AV = { login, signup, forgot, toggleCar, goto, pickPhoto };
+function togglePw(id, btn){ const el=document.getElementById(id); if(!el) return;
+  const show = el.type==='password'; el.type = show?'text':'password'; btn.textContent = show?'Hide':'Show'; }
+
+export const AV = { login, signup, forgot, toggleCar, goto, pickPhoto, togglePw };

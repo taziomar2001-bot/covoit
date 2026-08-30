@@ -57,14 +57,21 @@ export async function joinGroup(code) {
 }
 export async function createGroup({ name, description, dest }) {
   const session = await getSession();
+  const id = (crypto.randomUUID && crypto.randomUUID()) ||
+             ('10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+               (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
   const code = Math.random().toString(36).slice(2, 7).toUpperCase();
-  const { data, error } = await supabase.from('groups').insert({
-    name, description, invite_code: code, created_by: session.user.id,
+  // Generate the id client-side so we don't need to read the row back (RLS blocks
+  // reading a group before the creator's membership row exists).
+  const row = {
+    id, name, description, invite_code: code, created_by: session.user.id,
     dest_name: dest.name, dest_addr: dest.detail || '', dest_lat: dest.lat, dest_lng: dest.lng,
-  }).select().single();
+  };
+  const { error } = await supabase.from('groups').insert(row);
   if (error) throw error;
-  await supabase.from('group_members').insert({ group_id: data.id, user_id: session.user.id, role: 'admin' });
-  return data;
+  const { error: e2 } = await supabase.from('group_members').insert({ group_id: id, user_id: session.user.id, role: 'admin' });
+  if (e2) throw e2;
+  return row;
 }
 
 // ---------- RIDES ----------
