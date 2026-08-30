@@ -381,6 +381,33 @@ drop policy if exists avatars_update on storage.objects;
 create policy avatars_update on storage.objects for update using (bucket_id = 'avatars' and owner = auth.uid());
 
 -- ---------------------------------------------------------------------------
+-- RPC: group directory (member names + photos, NO phone) for any group member
+-- ---------------------------------------------------------------------------
+create or replace function public.group_directory(p_group_id uuid)
+returns table(user_id uuid, name text, photo_url text, is_admin boolean)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_group_member(p_group_id) then raise exception 'NOT_A_MEMBER'; end if;
+  return query
+    select p.id,
+           coalesce(nullif(trim(p.first_name||' '||p.last_name),''),'Member'),
+           p.photo_url,
+           (gm.role = 'admin')
+    from group_members gm join profiles p on p.id = gm.user_id
+    where gm.group_id = p_group_id
+    order by (gm.role = 'admin') desc, p.first_name nulls last;
+end; $$;
+
+-- ---------------------------------------------------------------------------
+-- RPC: delete my account and all my data (cascades from auth.users)
+-- ---------------------------------------------------------------------------
+create or replace function public.delete_my_account()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  delete from auth.users where id = auth.uid();
+end; $$;
+
+-- ---------------------------------------------------------------------------
 -- GRANTS — the app's roles need table/function privileges (RLS still governs
 -- which rows). Without these, writes fail with "permission denied for table".
 -- ---------------------------------------------------------------------------

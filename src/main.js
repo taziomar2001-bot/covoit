@@ -1,11 +1,11 @@
 import './styles.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { supabase, CONFIG_OK } from './lib/supabase.js';
-import { store, loadAll } from './lib/store.js';
+import { store, loadAll, loadGroups } from './lib/store.js';
 import * as api from './lib/api.js';
 import { CV, enterApp, renderTopbar, render } from './app.js';
 import { AV, renderAuth } from './auth.js';
-import { toast } from './lib/util.js';
+import { toast, initSheetGestures } from './lib/util.js';
 
 // expose inline-handler namespaces
 window.CV = CV;
@@ -16,6 +16,7 @@ try { const t=localStorage.getItem('cv_theme'); if(t) store.theme=t;
   else if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) store.theme='dark';
 } catch(e){}
 document.documentElement.setAttribute('data-theme', store.theme);
+initSheetGestures();
 
 const killBoot = () => document.getElementById('boot')?.remove();
 let booted=false;
@@ -43,6 +44,13 @@ async function boot(session){
   try{
     const ok = await loadAll();
     if(!ok){ renderAuth(); return; }
+    // Deep-link join: covoit-uni.netlify.app/?join=CODE
+    const jp = new URLSearchParams(location.search).get('join');
+    if(jp){
+      try{ const g = await api.joinGroup(jp); await loadGroups(); store.currentGroup = g.id;
+           setTimeout(()=>toast('Joined '+g.name), 600); }catch(e){}
+      history.replaceState({}, '', location.pathname);
+    }
   }catch(e){
     // Never freeze on a data error — enter the app with whatever loaded and tell the user.
     console.error('Initial load error:', e);

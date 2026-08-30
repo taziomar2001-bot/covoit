@@ -265,18 +265,13 @@ async function loadContacts(r, total){
   try{
     const contacts = await api.rideContacts(r.id);
     const box=$('#ridepeople'); if(!box) return;
-    const waGroup = total>0?`<div class="wa-group" onclick="CV.startWaGroup('${r.id}')"><div class="wi">${I.chat}</div><div><div class="wt">Start WhatsApp group</div><div class="wd">${contacts.length} people on this ride</div></div><div class="go">${I.chev}</div></div>`:'';
     const rows = contacts.map(c=>{
       const me = c.user_id===store.user.id;
       const contact = c.phone?`<div class="contact"><a class="cbtn wa" onclick="event.stopPropagation();window.open('${waLink(c.phone)}','_blank')">${I.chat}</a><a class="cbtn call" onclick="event.stopPropagation();window.location.href='tel:${esc((c.phone||'').replace(/\\s/g,''))}'">${I.phone}</a></div>`:'';
       return `<div class="person"><span class="ava ${me?'':'mut'}" ${c.photo_url?`style="background-image:url(${esc(c.photo_url)})"`:''}>${inits(c.name)}</span><div><div class="nm">${esc(c.name)||'Rider'}${me?' <span class="tag-you">You</span>':''}</div><div class="rl ph">${c.role==='driver'?'Driver':'Passenger'}${c.phone?' · '+esc(c.phone):''}</div></div>${me?'':contact}</div>`;
     }).join('');
-    box.innerHTML = waGroup + `<div class="people">${rows}</div><div style="margin-top:14px"><div class="banner good">${I.info}<div>You're on this ride, so everyone's details are shared. Message the group or reach anyone directly.</div></div></div>`;
+    box.innerHTML = `<div class="people">${rows}</div><div style="margin-top:14px"><div class="banner good">${I.info}<div>You're on this ride, so everyone's details are shared — WhatsApp or call anyone directly above.</div></div></div>`;
   }catch(e){ const box=$('#ridepeople'); if(box) box.innerHTML=peopleGated(r,total); }
-}
-function startWaGroup(id){
-  closeSheet();
-  setTimeout(()=>{ toast('Opening WhatsApp to start a group…'); try{window.open('https://wa.me/','_blank');}catch(e){} },200);
 }
 
 /* ---- join ---- */
@@ -380,8 +375,10 @@ function renderCreate(){
     ${d.ret?`<div class="field" style="margin-top:-2px"><label class="label">Return departure</label><input class="inp tnum" type="time" value="${d.retTime}" onchange="CV.cd('retTime',this.value)"></div>`:''}
     <div class="field"><label class="label">Notes <span class="mut">· optional</span></label><textarea class="inp" placeholder="e.g. meet at the north exit" oninput="CV.cdRaw('notes',this.value)">${esc(d.notes)}</textarea></div>
     <div style="height:2px"></div>`;
+  const keepScroll = document.querySelector('.sheet.on .sheet-body')?.scrollTop || 0;
   showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">${editingId?'Edit ride':'Create a ride'}</div><button class="closex" onclick="CV.closeSheet()">${I.x}</button></div>`, body,
-    `<button class="btn primary" id="pubbtn" onclick="CV.publishRide()">${editingId?'Save changes':'Publish ride'}</button>`);
+    `<button class="btn primary" id="pubbtn" onclick="CV.publishRide()">${editingId?'Save changes':'Publish ride'}</button>`,
+    { tall:true, scrollTop:keepScroll });
 }
 function cd(k,v){ draft[k]=v; renderCreate(); }
 function cdRaw(k,v){ draft[k]=v; }
@@ -465,15 +462,16 @@ function viewProfile(){
     ${p.has_car?`<div class="listrow tap" onclick="CV.openEditProfile()"><span class="lri">${I.car}</span><div><div class="lrt">${esc(p.vehicle_model||'My car')}</div><div class="prof-sub">${esc(p.vehicle_color||'')}${p.vehicle_seats?' · '+p.vehicle_seats+' seats':''}</div></div><span class="lrv">${I.chev}</span></div>`
       :`<div class="listrow tap" onclick="CV.openEditProfile()"><span class="lri">${I.add}</span><div class="lrt">Add a vehicle</div><span class="lrv">${I.chev}</span></div>`}
     <div class="section-h">Groups</div>
-    ${store.groups.map(g=>`<div class="listrow tap" onclick="CV.enterGroup('${g.id}')"><span class="lri" style="font-size:19px">🎓</span><div><div class="lrt">${esc(g.name)}</div><div class="prof-sub">Code ${esc(g.invite_code)} · ${g.members||0} members</div></div><span class="lrv">${I.chev}</span></div>`).join('')}
+    ${store.groups.length ? store.groups.map(g=>`<div class="listrow tap" onclick="CV.openGroupDetail('${g.id}')"><span class="lri" style="font-size:19px">🎓</span><div><div class="lrt">${esc(g.name)}</div><div class="prof-sub">Code ${esc(g.invite_code)} · ${g.members||0} members · tap for details</div></div><span class="lrv">${I.chev}</span></div>`).join('') : `<div class="listrow" style="color:var(--ink-3)"><span class="lri">${I.users}</span><div class="lrt" style="font-weight:500">Not in any group yet</div></div>`}
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="CV.openGroupSwitcher()">${I.add} Join or create a group</button>
     <div class="section-h">Settings</div>
     <div class="listrow tap" onclick="CV.openEditProfile()"><span class="lri">${I.phone}</span><div class="lrt">Phone & personal info</div><span class="lrv">${I.chev}</span></div>
     <div class="listrow tap" onclick="CV.go('notif')"><span class="lri">${I.bell}</span><div class="lrt">Notifications</div><span class="lrv">${I.chev}</span></div>
     <div class="listrow tap" onclick="CV.toggleTheme()"><span class="lri">${store.theme==='dark'?I.sun:I.moon}</span><div class="lrt">Appearance</div><span class="lrv">${store.theme==='dark'?'Dark':'Light'} ${I.chev}</span></div>
-    <div style="height:10px"></div>
-    <div class="listrow tap" style="color:var(--danger)" onclick="CV.confirmLogout()"><span class="lri" style="color:var(--danger)">${I.logout}</span><div class="lrt">Log out</div></div>
-    <div class="sr">CoVoit</div>
+    <div class="section-h" style="color:var(--danger)">Danger zone</div>
+    <div class="listrow tap" onclick="CV.confirmLogout()"><span class="lri">${I.logout}</span><div class="lrt">Log out</div><span class="lrv">${I.chev}</span></div>
+    <div class="listrow tap" style="color:var(--danger)" onclick="CV.confirmDeleteAccount()"><span class="lri" style="color:var(--danger)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></span><div class="lrt">Delete account</div><span class="lrv" style="color:var(--danger)">${I.chev}</span></div>
+    <div class="sr">CoVoit · your commute, organised</div>
   </div>`;
 }
 let editDraft=null;
@@ -489,7 +487,8 @@ function openEditProfile(keep){
      <div class="switch" onclick="CV.editToggleCar()"><div><div class="st">I have a car</div></div><div class="tog ${d.car?'on':''}"></div></div>
      ${d.car?`<div class="grid2"><div class="field"><label class="label">Model</label><input class="inp" id="e-model" value="${esc(d.model)}"></div><div class="field"><label class="label">Colour</label><input class="inp" id="e-color" value="${esc(d.color)}"></div></div>
      <div class="field"><label class="label">Passenger capacity</label><div class="numpick">${[1,2,3,4,5,6].map(n=>`<button class="day ${d.seats===n?'on':''}" onclick="CV.editSeats(${n})">${n}</button>`).join('')}</div></div>`:''}`,
-    `<button class="btn ghost" onclick="CV.closeSheet()">Cancel</button><button class="btn primary" onclick="CV.saveProfile()">Save changes</button>`);
+    `<button class="btn ghost" onclick="CV.closeSheet()">Cancel</button><button class="btn primary" onclick="CV.saveProfile()">Save changes</button>`,
+    { tall:true, scrollTop:(document.querySelector('.sheet.on .sheet-body')?.scrollTop||0) });
 }
 function editToggleCar(){ editDraft.car=!editDraft.car; openEditProfile(true); }
 function editSeats(n){ editDraft.seats=n; openEditProfile(true); }
@@ -538,7 +537,7 @@ async function markAllRead(){ await api.markAllRead(); store.notifications.forEa
 async function enterGroup(id){ store.currentGroup=id; await loadRides(); go('group'); }
 function openGroupSwitcher(){
   showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Your groups</div><button class="closex" onclick="CV.closeSheet()">${I.x}</button></div>`,
-    `${store.groups.map(g=>`<div class="listrow tap" onclick="CV.switchGroup('${g.id}')" style="${g.id===store.currentGroup?'border-color:var(--accent)':''}"><span class="lri" style="font-size:20px">🎓</span><div><div class="lrt">${esc(g.name)}</div><div class="prof-sub">${g.members||0} members · code ${esc(g.invite_code)}</div></div><span class="lrv">${g.id===store.currentGroup?'<span style="color:var(--accent)">'+I.check+'</span>':I.chev}</span></div>`).join('')||'<div class="sr">No groups yet</div>'}
+    `${store.groups.map(g=>`<div class="listrow tap" onclick="CV.switchGroup('${g.id}')" style="${g.id===store.currentGroup?'border-color:var(--accent)':''}"><span class="lri" style="font-size:20px">🎓</span><div style="flex:1;min-width:0"><div class="lrt">${esc(g.name)}</div><div class="prof-sub">${g.members||0} members · code ${esc(g.invite_code)}</div></div><button class="iconbtn" style="width:34px;height:34px" onclick="event.stopPropagation();CV.openGroupDetail('${g.id}')">${I.info}</button><span class="lrv">${g.id===store.currentGroup?'<span style="color:var(--accent)">'+I.check+'</span>':I.chev}</span></div>`).join('')||'<div class="sr">No groups yet</div>'}
      <div class="divider"></div>
      <div class="field"><label class="label">Join with an invite code</label><div style="display:flex;gap:9px"><input class="inp" id="gc" placeholder="e.g. MIM27" style="text-transform:uppercase"><button class="btn primary" style="width:auto;padding:0 18px" onclick="CV.tryJoinGroup()">Join</button></div></div>
      <button class="btn ghost" onclick="CV.openCreateGroup()">${I.add} Create a new group</button>`,'');
@@ -586,6 +585,45 @@ async function doCreateGroup(){
   }catch(e){ if(btn){btn.disabled=false;btn.textContent='Create group';} toast('Could not create group: '+(e.message||e.code||'error')); }
 }
 
+/* ===================== GROUP DETAIL ===================== */
+async function openGroupDetail(gid){
+  const g=store.groups.find(x=>x.id===gid); if(!g) return; haptic();
+  showSheet(`<div class="sheet-head"><div class="gicon" style="width:44px;height:44px">🎓</div><div style="flex:1"><div class="sheet-title">${esc(g.name)}</div><div class="ride-sub" style="margin-top:4px">${g.members||0} members</div></div><button class="closex" onclick="CV.closeSheet()">${I.x}</button></div>`,
+    `<div id="gd-body"><div class="sr">Loading members…</div></div>`,
+    `<button class="btn ghost" onclick="CV.closeSheet()">Close</button><button class="btn primary" onclick="CV.switchGroup('${g.id}')">Open on map</button>`,
+    { tall:true });
+  try{
+    const members=await api.groupMembers(gid);
+    const box=$('#gd-body'); if(!box) return;
+    box.innerHTML=`
+      <div class="kv"><div class="k">${I.flag}</div><div><div class="kk">DESTINATION</div><div class="vv">${esc(g.dest_name)}</div></div></div>
+      ${g.description?`<div class="kv"><div class="k">${I.info}</div><div><div class="kk">ABOUT</div><div class="vv" style="font-weight:500">${esc(g.description)}</div></div></div>`:''}
+      <div class="kv"><div class="k">${I.users}</div><div style="flex:1"><div class="kk">INVITE CODE</div><div class="vv" style="display:flex;align-items:center;gap:10px;justify-content:space-between">${esc(g.invite_code)}<button class="btn sm ghost" onclick="CV.copyInvite('${esc(g.invite_code)}')">Copy invite</button></div></div></div>
+      <div class="section-h" style="margin-top:18px">Members · ${members.length}</div>
+      <div class="people">${members.map(m=>`<div class="person"><span class="ava ${m.user_id===store.user.id?'':'mut'}" ${m.photo_url?`style="background-image:url(${esc(m.photo_url)})"`:''}>${inits(m.name||'?')}</span><div><div class="nm">${esc(m.name||'Member')}${m.user_id===store.user.id?' <span class="tag-you">You</span>':''}</div><div class="rl">${m.is_admin?'Admin':'Member'}</div></div></div>`).join('')}</div>`;
+  }catch(e){ const box=$('#gd-body'); if(box) box.innerHTML=`<div class="sr">Couldn’t load members — ${esc(e.message||'error')}</div>`; }
+}
+function copyInvite(code){
+  const text=`Join our CoVoit group — enter code ${code} at ${location.origin}`;
+  try{ navigator.clipboard.writeText(text).then(()=>toast('Invite copied — paste it in WhatsApp'), ()=>toast('Invite code: '+code)); }
+  catch(e){ toast('Invite code: '+code); }
+}
+
+/* ===================== DELETE ACCOUNT ===================== */
+function confirmDeleteAccount(){
+  showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Delete account?</div><button class="closex" onclick="CV.closeSheet()">${I.x}</button></div>`,
+    `<div class="banner danger">${I.info}<div><b>This permanently deletes your account and all of your data</b> — your profile, every ride you created, and all your bookings. Any group you created is removed for everyone in it. <b>This cannot be undone.</b></div></div>
+     <div class="field"><label class="label">Type DELETE to confirm</label><input class="inp" id="del-confirm" placeholder="DELETE" autocomplete="off" autocapitalize="characters" oninput="CV.delCheck(this.value)"></div>`,
+    `<button class="btn ghost" onclick="CV.closeSheet()">Cancel</button><button class="btn danger" id="del-btn" disabled onclick="CV.doDeleteAccount()">Delete forever</button>`,
+    { tall:false });
+}
+function delCheck(v){ const b=$('#del-btn'); if(b) b.disabled = v.trim().toUpperCase()!=='DELETE'; }
+async function doDeleteAccount(){
+  const b=$('#del-btn'); if(b){ b.disabled=true; b.textContent='Deleting…'; }
+  try{ await api.deleteAccount(); location.reload(); }
+  catch(e){ if(b){ b.disabled=false; b.textContent='Delete forever'; } toast('Could not delete account: '+(e.message||'error')); }
+}
+
 /* ===================== TIME FILTER / THEME ===================== */
 function openTimeFilter(){
   const times=[]; for(let h=5;h<=23;h++) for(const m of ['00','30']) times.push((h<10?'0':'')+h+':'+m);
@@ -613,6 +651,7 @@ export const CV = {
   confirmCancelRide, doCancel, openCreate, openEdit, cd, cdRaw, toggleDay, acSearch, pickAddr, publishRide,
   setView, toggleAvail, cycleType, openTimeFilter, quickTime, applyTimeFilter, widenTime, toggleLoc,
   openGroupSwitcher, switchGroup, tryJoinGroup, enterGroup, openCreateGroup, doCreateGroup, acSearchG, pickAddrG,
+  openGroupDetail, copyInvite, confirmDeleteAccount, delCheck, doDeleteAccount,
   markAllRead, openEditProfile, saveProfile, pickPhoto, editToggleCar, editSeats, confirmLogout, doLogout,
-  startWaGroup, openMaps, closeSheet,
+  openMaps, closeSheet,
 };

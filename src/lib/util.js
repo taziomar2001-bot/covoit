@@ -27,12 +27,39 @@ export function openMaps(lat,lng,label){
 export const waLink = phone => 'https://wa.me/'+String(phone||'').replace(/[^0-9]/g,'');
 
 // bottom-sheet
-export function showSheet(head, body, foot){
+export function showSheet(head, body, foot, opts={}){
   const sh=$('#sheet');
+  sh.classList.toggle('tall', !!opts.tall);
+  sh.style.transform='';
   sh.innerHTML=`<div class="sheet-grab"></div>${head}<div class="sheet-body">${body}</div>${foot?`<div class="sheet-foot">${foot}</div>`:''}`;
   $('#scrim').classList.add('on'); requestAnimationFrame(()=>sh.classList.add('on'));
+  if(typeof opts.scrollTop==='number'){ const b=sh.querySelector('.sheet-body'); if(b) b.scrollTop=opts.scrollTop; }
 }
-export function closeSheet(){ $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on'); }
+export function closeSheet(){ const sh=$('#sheet'); sh.style.transform=''; sh.classList.remove('on'); $('#scrim').classList.remove('on'); }
+
+// Drag the sheet down (from the handle/header, or from the body when scrolled to top) to dismiss.
+export function initSheetGestures(){
+  const sh=$('#sheet'); let startY=null, dragging=false;
+  sh.addEventListener('pointerdown', e=>{
+    const body=sh.querySelector('.sheet-body');
+    const fromHandle = !!e.target.closest('.sheet-grab, .sheet-head');
+    const atTop = body ? body.scrollTop<=0 : true;
+    if(!fromHandle && !atTop) return;
+    if(!fromHandle && e.target.closest('button,a,input,textarea,select,.opt,.day,.typecard,.switch,.ac-item')) return;
+    startY=e.clientY; dragging=true; sh.style.transition='none';
+  });
+  window.addEventListener('pointermove', e=>{
+    if(!dragging) return; const dy=e.clientY-startY;
+    if(dy>0) sh.style.transform=`translateX(-50%) translateY(${dy}px)`;
+  });
+  const end = e=>{
+    if(!dragging) return; dragging=false; sh.style.transition='';
+    const dy=(e.clientY||startY)-startY;
+    if(dy>110) closeSheet(); else sh.style.transform='';
+  };
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+}
 
 // service date helper: next occurrence of a recurring ride (weekday in weekdays[])
 export function nextServiceDate(weekdays){

@@ -44,7 +44,18 @@ export async function myGroups() {
     .from('group_members').select('group:groups(*)')
     .order('joined_at', { ascending: true });
   if (error) throw error;
-  return (data || []).map(r => r.group).filter(Boolean);
+  const seen = new Set();
+  return (data || []).map(r => r.group).filter(g => g && !seen.has(g.id) && seen.add(g.id));
+}
+export async function groupMembers(groupId) {
+  const { data, error } = await supabase.rpc('group_directory', { p_group_id: groupId });
+  if (error) throw error;
+  return data || [];
+}
+export async function deleteAccount() {
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) throw error;
+  await supabase.auth.signOut();
 }
 export async function groupMemberCount(groupId) {
   const { count } = await supabase.from('group_members').select('*', { count: 'exact', head: true }).eq('group_id', groupId);
