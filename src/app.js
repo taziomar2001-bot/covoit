@@ -131,6 +131,8 @@ function rideCard(r){
 
 /* ===================== GROUP (MAP/LIST) ===================== */
 let map, markers=[], selfMarker=null;
+window.addEventListener('resize', () => { if (map) map.resize(); });
+window.addEventListener('orientationchange', () => { setTimeout(() => { if (map) map.resize(); }, 250); });
 function renderGroup(){
   const sc=$('#screen');
   if (!currentGroupObj()){ sc.innerHTML = viewNoGroup(); return; }
@@ -181,7 +183,8 @@ async function initMap(){
   try{
     map=new maplibregl.Map({container:'map',style:mapStyle(),center:[g.dest_lng,g.dest_lat],zoom:11.3,attributionControl:false});
     map.addControl(new maplibregl.AttributionControl({compact:true}));
-    map.on('load',()=>{ drawMarkers(); updateCount(); fitRides(); });
+    map.on('load',()=>{ map.resize(); drawMarkers(); updateCount(); fitRides(); });
+    setTimeout(()=>{ if(map) map.resize(); }, 200); // ensure correct size after layout settles
     map.on('error',()=>{});
   }catch(e){
     c.innerHTML=`<div class="empty" style="padding-top:90px"><div class="ei">${I.map}</div><div class="et">Map needs internet</div><div class="ed">List view works offline.</div><div class="ebtns"><button class="btn primary" onclick="CV.setView('list')">Switch to List</button></div></div>`;
@@ -482,7 +485,7 @@ function openEditProfile(keep){
   showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Edit profile</div><button class="closex" onclick="CV.closeSheet()">${I.x}</button></div>`,
     `<div class="photo-pick" onclick="CV.pickPhoto('edit')"><div class="pp-ava" style="${d.photo?`background-image:url(${esc(d.photo)});border-style:solid`:''}">${d.photo?'':I.cam}</div><div><div class="pp-t">Change photo</div><div class="pp-d">Tap to upload</div></div></div>
      <div class="grid2"><div class="field"><label class="label">First name</label><input class="inp" id="e-first" value="${esc(d.first)}"></div><div class="field"><label class="label">Last name</label><input class="inp" id="e-last" value="${esc(d.last)}"></div></div>
-     <div class="field"><label class="label">Phone number</label><input class="inp" id="e-phone" type="tel" value="${esc(d.phone)}"></div>
+     <div class="field"><label class="label">Phone number <span class="mut">· with country code</span></label><input class="inp" id="e-phone" type="tel" inputmode="tel" value="${esc(d.phone)}" placeholder="+34 600 000 000"><div class="mut" style="font-size:12px;margin-top:6px">Include your country code (e.g. +34) so ride-mates can WhatsApp/call you.</div></div>
      <div class="switch" onclick="CV.editToggleCar()"><div><div class="st">I have a car</div></div><div class="tog ${d.car?'on':''}"></div></div>
      ${d.car?`<div class="grid2"><div class="field"><label class="label">Model</label><input class="inp" id="e-model" value="${esc(d.model)}"></div><div class="field"><label class="label">Colour</label><input class="inp" id="e-color" value="${esc(d.color)}"></div></div>
      <div class="field"><label class="label">Passenger capacity</label><div class="numpick">${[1,2,3,4,5,6].map(n=>`<button class="day ${d.seats===n?'on':''}" onclick="CV.editSeats(${n})">${n}</button>`).join('')}</div></div>`:''}`,

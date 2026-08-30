@@ -32,7 +32,7 @@ function viewSignup(){
       <div class="photo-pick" onclick="AV.pickPhoto()"><div class="pp-ava" id="su-ava" style="${signupPhotoUrl?`background-image:url(${signupPhotoUrl});border-style:solid`:''}">${signupPhotoUrl?'':I.cam}</div><div><div class="pp-t">Add a photo <span class="mut">· optional</span></div><div class="pp-d">Helps classmates recognise you</div></div></div>
       <div class="grid2"><div class="field"><label class="label">First name</label><input class="inp" id="su-first" placeholder="Omar"></div><div class="field"><label class="label">Last name</label><input class="inp" id="su-last" placeholder="Tazi"></div></div>
       <div class="field"><label class="label">Email</label><input class="inp" id="su-email" type="email" placeholder="you@university.edu"></div>
-      <div class="field"><label class="label">Phone number</label><input class="inp" id="su-phone" type="tel" placeholder="+34 600 000 000"><div class="mut" style="font-size:12px;margin-top:7px;display:flex;gap:7px;align-items:flex-start">${I.info}<span>Only shared with people you actually share a ride with — never public to the group.</span></div></div>
+      <div class="field"><label class="label">Phone number <span class="mut">· with country code</span></label><input class="inp" id="su-phone" type="tel" inputmode="tel" placeholder="+34 600 000 000" value="+"><div class="mut" style="font-size:12px;margin-top:7px;display:flex;gap:7px;align-items:flex-start">${I.info}<span><b>Start with your country code</b> — e.g. <b>+34</b> for Spain — so WhatsApp/calls work. Only shared with people you share a ride with, never public.</span></div></div>
       <div class="field"><label class="label">Password</label>
         <div style="position:relative"><input class="inp" id="su-pass" type="password" placeholder="Choose a password (min 6 chars)" style="padding-right:74px">
         <button type="button" onclick="AV.togglePw('su-pass',this)" style="position:absolute;right:8px;top:8px;bottom:8px;padding:0 12px;font-size:12.5px;font-weight:600;color:var(--accent);background:transparent">Show</button></div></div>
@@ -57,6 +57,9 @@ async function signup(){
         pass=$('#su-pass').value, code=$('#su-code').value.trim();
   if(!first||!email||!pass){ toast('Name, email and password are required'); return; }
   if(pass.length<6){ toast('Password must be at least 6 characters'); return; }
+  const digits=phone.replace(/[^0-9]/g,'');
+  if(!phone || digits.length<6){ toast('Add your phone number so ride-mates can reach you'); return; }
+  if(!phone.trim().startsWith('+')){ toast('Start your phone with a country code, e.g. +34'); return; }
   const btn=$('#su-btn'); btn.disabled=true; btn.textContent='Creating…';
   // Set this BEFORE signUp so the SIGNED_IN event (which can fire during the await)
   // always finds it — otherwise the photo/car/code could be dropped on first sign-up.
