@@ -148,6 +148,29 @@ export async function rideContacts(rideId) {
   if (error) throw error;
   return data || [];
 }
+export async function cancelOccurrence(rideId, serviceDate, direction) {
+  const { error } = await supabase.rpc('cancel_occurrence', { p_ride_id: rideId, p_service_date: serviceDate, p_direction: direction });
+  if (error) throw error;
+}
+export async function editOccurrence(rideId, serviceDate, departTime, returnTime) {
+  const { error } = await supabase.rpc('edit_occurrence', { p_ride_id: rideId, p_service_date: serviceDate, p_depart_time: departTime, p_return_time: returnTime });
+  if (error) throw error;
+}
+export async function skipMyBooking(rideId, serviceDate, direction) {
+  const { error } = await supabase.rpc('skip_my_booking', { p_ride_id: rideId, p_service_date: serviceDate, p_direction: direction });
+  if (error) throw error;
+}
+export async function rideExceptions(rideIds) {
+  if (!rideIds.length) return [];
+  const { data, error } = await supabase.from('ride_exceptions').select('*').in('ride_id', rideIds);
+  if (error) throw error;
+  return data || [];
+}
+export async function myBookingSkips(uid) {
+  const { data, error } = await supabase.from('booking_skips').select('*').eq('passenger_id', uid);
+  if (error) throw error;
+  return data || [];
+}
 
 // ---------- NOTIFICATIONS ----------
 export async function myNotifications() {

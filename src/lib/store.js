@@ -61,7 +61,8 @@ export async function loadRides() {
   return store.rides;
 }
 
-// Rides across ALL of the user's groups where they drive or are booked.
+// Rides across ALL of the user's groups where they drive or are booked,
+// decorated with per-date exceptions (driver cancels/edits) and the user's own skips.
 export async function loadMyRides() {
   const uid = store.user.id;
   const created = await api.myCreatedRides(uid);
@@ -69,8 +70,15 @@ export async function loadMyRides() {
   const byId = {};
   [...created, ...bookedRides].forEach(r => { byId[r.id] = r; });
   const list = Object.values(byId);
-  const bookings = await api.bookingsForRides(list.map(r => r.id));
-  return decorate(list, bookings, uid);
+  const ids = list.map(r => r.id);
+  const [bookings, exc, skips] = await Promise.all([
+    api.bookingsForRides(ids), api.rideExceptions(ids), api.myBookingSkips(uid),
+  ]);
+  decorate(list, bookings, uid);
+  const excByRide = {}; exc.forEach(e => { (excByRide[e.ride_id] ||= {})[e.service_date] = e; });
+  const skipByRide = {}; skips.forEach(s => { (skipByRide[s.ride_id] ||= new Set()).add(s.service_date + '|' + s.direction); });
+  list.forEach(r => { r._exc = excByRide[r.id] || {}; r._skips = skipByRide[r.id] || new Set(); });
+  return list;
 }
 
 export async function loadNotifications() {

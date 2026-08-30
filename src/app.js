@@ -1,6 +1,6 @@
 import { I } from './lib/icons.js';
 import { $, el, DAYN, DAYF, esc, attr, inits, haversine, distLabel, toast, haptic,
-         openMaps, waLink, showSheet, closeSheet, nextServiceDate, freqLabel } from './lib/util.js';
+         openMaps, waLink, showSheet, closeSheet, showModal, closeModal, nextServiceDate, freqLabel } from './lib/util.js';
 import * as api from './lib/api.js';
 import { geocode } from './lib/geocode.js';
 import { store, currentGroupObj, loadRides, loadNotifications, loadGroups, loadMyRides,
@@ -223,14 +223,32 @@ async function toggleLoc(){
 }
 
 /* ===================== RIDE DETAIL ===================== */
-async function openRide(id){
+async function openRide(id, ctx={}){
   let r = store.rides.find(x=>x.id===id) || (store._myrides||[]).find(x=>x.id===id);
   if(!r) return; haptic();
   const left=r._seatsLeft, full=isFull(r), member=r._mine||r._joinedByMe;
   const total=r._participants.length+(r._joinedByMe?1:0);
   const badge = r.type==='taxi'?`<span class="chip taxi">${I.taxi} Shared taxi</span>`:`<span class="chip driver">${I.car} Driver ride</span>`;
   const vehicle = '';
+  let occTop='';
+  if(ctx && ctx.date){
+    const dObj=new Date(ctx.date+'T12:00');
+    const dLabel=dObj.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'});
+    const dirLabel=ctx.dir==='ret'?'Return':'Outbound';
+    const exc = r._exc ? r._exc[ctx.date] : null;
+    let occTime = ctx.dir==='ret'?r.return_time:r.depart_time;
+    if(exc){ if(ctx.dir==='out'&&exc.depart_time) occTime=exc.depart_time; if(ctx.dir==='ret'&&exc.return_time) occTime=exc.return_time; }
+    let actions='';
+    if(r._mine){
+      actions=`<button class="btn ghost sm" style="width:100%;margin-bottom:8px" onclick="CV.editOccDate('${r.id}','${ctx.date}')">${I.clock} Change this date's time</button>
+               <button class="btn danger sm" style="width:100%" onclick="CV.cancelOccDate('${r.id}','${ctx.date}')">Cancel just this date</button>`;
+    } else if(r._joinedByMe){
+      actions=`<button class="btn danger sm" style="width:100%" onclick="CV.skipOccDate('${r.id}','${ctx.date}','${ctx.dir}')">Cancel my seat for this date</button>`;
+    }
+    occTop=`<div class="banner accent">${I.clock}<div><b>This date · ${dLabel}</b> · ${dirLabel} at ${occTime}</div></div>${actions?`<div style="margin:2px 0 16px">${actions}</div>`:''}`;
+  }
   const body=`
+    ${occTop}
     <div class="route-line">
       <div class="rl-row"><div class="rl-dots"><div class="rl-dot"></div><div class="rl-bar"></div></div>
         <div class="rl-txt"><div class="p">${esc(r.pickup_name)}</div><div class="t">${esc(r.pickup_addr||'')} · departs ${r.depart_time}</div></div>
@@ -301,9 +319,10 @@ async function doJoin(id){
                     : (r.frequency==='onetime' ? (r.ride_date||nextServiceDate(r.weekdays||[])) : null);
   try{
     await api.joinRide(id, serviceDate, direction);
-    haptic(); closeSheet();
-    await loadRides();
-    setTimeout(()=>{ toast('Joined! '+r.creator_name+' has been notified'); renderTopbar(); if(store.tab==='group')refreshGroup(); else render(); },220);
+    haptic();
+    let creator=null; try{ const c=await api.rideContacts(id); creator=c.find(x=>x.role==='driver'); }catch(e){}
+    closeSheet(); await loadRides();
+    setTimeout(()=>{ renderTopbar(); if(store.tab==='group')refreshGroup(); else render(); showJoinModal(r, creator); },220);
   }catch(e){
     const msg = String(e.message||e);
     closeSheet();
@@ -329,6 +348,70 @@ async function doCancel(id){
   setTimeout(()=>{ toast('Ride cancelled · passengers notified'); render(); },220);
 }
 
+/* ---- per-date occurrence actions (from My Rides) ---- */
+function openOccurrence(id,date,dir){ openRide(id,{date,dir}); }
+async function refreshMine(){ store._myrides=await loadMyRides(); }
+function occDl(date){ return new Date(date+'T12:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'}); }
+
+function cancelOccDate(id,date){
+  const r=(store._myrides||[]).find(x=>x.id===id)||store.rides.find(x=>x.id===id); const dl=occDl(date);
+  if(!r.has_return){
+    showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Cancel this date?</div><button class="closex" onclick="CV.openOccurrence('${id}','${date}','out')">${I.x}</button></div>`,
+      `<div class="banner danger">${I.info}<div>Cancels <b>${dl}</b> for everyone on this ride. Your recurring schedule stays active for other days.</div></div>`,
+      `<button class="btn ghost" onclick="CV.openOccurrence('${id}','${date}','out')">Keep</button><button class="btn danger" onclick="CV.doCancelOcc('${id}','${date}','outbound')">Cancel this date</button>`);
+    return;
+  }
+  showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Cancel this date</div><button class="closex" onclick="CV.openOccurrence('${id}','${date}','out')">${I.x}</button></div>`,
+    `<div class="banner danger">${I.info}<div>Cancels <b>${dl}</b> for everyone. Choose which journeys.</div></div>
+     <button class="btn danger" style="margin-bottom:9px" onclick="CV.doCancelOcc('${id}','${date}','both')">Cancel both journeys</button>
+     <button class="btn ghost" style="margin-bottom:9px" onclick="CV.doCancelOcc('${id}','${date}','outbound')">Outbound only</button>
+     <button class="btn ghost" onclick="CV.doCancelOcc('${id}','${date}','return')">Return only</button>`,'');
+}
+async function doCancelOcc(id,date,dir){
+  try{ await api.cancelOccurrence(id,date,dir); }catch(e){ toast('Could not cancel: '+(e.message||'error')); return; }
+  closeSheet(); await refreshMine(); await loadRides();
+  setTimeout(()=>{ toast('That date was cancelled · passengers notified'); render(); },220);
+}
+function editOccDate(id,date){
+  const r=(store._myrides||[]).find(x=>x.id===id); const exc=r._exc?r._exc[date]:null;
+  const dt=exc&&exc.depart_time?exc.depart_time:r.depart_time;
+  const rt=exc&&exc.return_time?exc.return_time:(r.return_time||'');
+  const dl=occDl(date);
+  showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Change time · ${dl}</div><button class="closex" onclick="CV.openOccurrence('${id}','${date}','out')">${I.x}</button></div>`,
+    `<div class="banner accent">${I.info}<div>Only changes <b>${dl}</b>. Other days keep the regular schedule.</div></div>
+     <div class="field"><label class="label">Departure time</label><input class="inp tnum" id="occ-dep" type="time" value="${dt}"></div>
+     ${r.has_return?`<div class="field"><label class="label">Return time</label><input class="inp tnum" id="occ-ret" type="time" value="${rt}"></div>`:''}`,
+    `<button class="btn ghost" onclick="CV.openOccurrence('${id}','${date}','out')">Cancel</button><button class="btn primary" onclick="CV.doEditOcc('${id}','${date}')">Save this date</button>`);
+}
+async function doEditOcc(id,date){
+  const dep=$('#occ-dep')?.value||null, ret=$('#occ-ret')?.value||null;
+  try{ await api.editOccurrence(id,date,dep,ret); }catch(e){ toast('Could not save: '+(e.message||'error')); return; }
+  closeSheet(); await refreshMine();
+  setTimeout(()=>{ toast('This date updated · passengers notified'); render(); },220);
+}
+function skipOccDate(id,date,dir){
+  const dl=occDl(date), dirLabel=dir==='ret'?'return':'outbound';
+  showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Cancel your seat?</div><button class="closex" onclick="CV.openOccurrence('${id}','${date}','${dir}')">${I.x}</button></div>`,
+    `<div class="banner">${I.info}<div>Frees your ${dirLabel} seat on <b>${dl}</b> for someone else. You stay on the ride for all other days.</div></div>`,
+    `<button class="btn ghost" onclick="CV.openOccurrence('${id}','${date}','${dir}')">Keep it</button><button class="btn danger" onclick="CV.doSkipOcc('${id}','${date}','${dir==='ret'?'return':'outbound'}')">Cancel this seat</button>`);
+}
+async function doSkipOcc(id,date,direction){
+  try{ await api.skipMyBooking(id,date,direction); }catch(e){ toast('Could not cancel: '+(e.message||'error')); return; }
+  closeSheet(); await refreshMine();
+  setTimeout(()=>{ toast('Seat freed for that date'); render(); },220);
+}
+function showJoinModal(r, creator){
+  const name = creator ? creator.name : r.creator_name;
+  const first = (name||'the driver').split(' ')[0];
+  const phone = creator ? creator.phone : '';
+  showModal(`<button class="modal-x" onclick="CV.closeModal()">${I.x}</button>
+    <div class="modal-ic">${I.check}</div>
+    <div class="modal-h">You're in!</div>
+    <div class="modal-p">For the smoothest coordination, CoVoit recommends messaging <b>${esc(name)}</b> directly to confirm the pickup time and spot.</div>
+    ${phone?`<a class="btn good" href="${waLink(phone)}" target="_blank" rel="noopener" onclick="CV.closeModal()">${I.chat} Message ${esc(first)}</a>`:''}
+    <button class="btn ghost" onclick="CV.closeModal()">Maybe later</button>`);
+}
+
 /* ===================== CREATE / EDIT RIDE ===================== */
 let draft=null, editingId=null;
 function openCreate(preType){
@@ -337,7 +420,9 @@ function openCreate(preType){
   editingId=null;
   draft={ type:preType||'driver', pickup:null,
     dest:{name:g.dest_name, detail:g.dest_addr, lat:g.dest_lat, lng:g.dest_lng}, destIsDefault:true,
-    time:'08:00', seats:3, freq:'recurring', days:[1,2,3,4,5], date:'', fuel:false, ret:false, retTime:'18:30', notes:'' };
+    time:'08:00', seats:3, freq:'recurring', days:[1,2,3,4,5], date:'',
+    startDate:fmtD(new Date()), endDate:fmtD(addDays(new Date(),120)),
+    fuel:false, ret:false, retTime:'18:30', notes:'' };
   renderCreate();
 }
 function openEdit(id){
@@ -346,7 +431,8 @@ function openEdit(id){
   draft={ type:r.type, pickup:{name:r.pickup_name, detail:r.pickup_addr, lat:r.pickup_lat, lng:r.pickup_lng},
     dest:{name:r.dest_name, detail:r.dest_addr, lat:r.dest_lat, lng:r.dest_lng}, destIsDefault:false,
     time:r.depart_time, seats:r.seats_total, freq:r.frequency, days:(r.weekdays||[]).slice(),
-    date:r.ride_date||'', fuel:r.fuel_share, ret:r.has_return, retTime:r.return_time||'18:30', notes:r.notes||'' };
+    date:r.ride_date||'', startDate:r.start_date||fmtD(new Date()), endDate:r.end_date||'',
+    fuel:r.fuel_share, ret:r.has_return, retTime:r.return_time||'18:30', notes:r.notes||'' };
   renderCreate();
 }
 function renderCreate(){
@@ -360,6 +446,7 @@ function renderCreate(){
     <div class="field ac-wrap"><label class="label">Pick-up location</label>
       <input class="inp" id="pickinp" placeholder="Search address, station, place…" oninput="CV.acSearch('pickup',this.value)" autocomplete="off" value="${d.pickup?esc(d.pickup.name):''}">
       <div id="ac-pickup"></div></div>
+    <div style="display:flex;justify-content:center;margin:-4px 0 10px"><button class="swapbtn" onclick="CV.swapRoute()">${I.repeat} Reverse pick-up & destination</button></div>
     <div class="field ac-wrap"><label class="label">Destination ${d.destIsDefault?'<span class="mut">· group default</span>':''}</label>
       <input class="inp" id="destinp" placeholder="Search destination…" oninput="CV.acSearch('dest',this.value)" autocomplete="off" value="${d.dest?esc(d.dest.name):''}">
       <div id="ac-dest"></div>
@@ -369,7 +456,8 @@ function renderCreate(){
       <div class="numpick">${[1,2,3,4,5,6].map(n=>`<button class="day ${d.seats===n?'on':''}" onclick="CV.cd('seats',${n})">${n}</button>`).join('')}</div></div>
     <div class="field"><label class="label">Frequency</label>
       <div class="freqtabs"><button class="${d.freq==='recurring'?'on':''}" onclick="CV.cd('freq','recurring')">Recurring</button><button class="${d.freq==='onetime'?'on':''}" onclick="CV.cd('freq','onetime')">One time</button></div>
-      ${d.freq==='recurring'?`<div class="days">${[1,2,3,4,5,6,0].map(i=>`<div class="day ${d.days.includes(i)?'on':''}" onclick="CV.toggleDay(${i})">${DAYN[i]}</div>`).join('')}</div>`:`<input class="inp" type="date" onchange="CV.cd('date',this.value)" value="${d.date}">`}</div>
+      ${d.freq==='recurring'?`<div class="days">${[1,2,3,4,5,6,0].map(i=>`<div class="day ${d.days.includes(i)?'on':''}" onclick="CV.toggleDay(${i})">${DAYN[i]}</div>`).join('')}</div>
+      <div class="grid2" style="margin-top:12px"><div class="field" style="margin-bottom:0"><label class="label">Starts</label><input class="inp" type="date" value="${d.startDate||''}" onchange="CV.cd('startDate',this.value)"></div><div class="field" style="margin-bottom:0"><label class="label">Ends</label><input class="inp" type="date" value="${d.endDate||''}" onchange="CV.cd('endDate',this.value)"></div></div>`:`<input class="inp" type="date" onchange="CV.cd('date',this.value)" value="${d.date}">`}</div>
     ${d.type==='driver'?`<div class="switch" onclick="CV.cd('fuel',${!d.fuel})"><div><div class="st">Share fuel costs</div><div class="sd">Passengers contribute to petrol</div></div><div class="tog ${d.fuel?'on':''}"></div></div>`:''}
     <div class="switch" onclick="CV.cd('ret',${!d.ret})"><div><div class="st">Add return trip</div><div class="sd">Reverses the route back later</div></div><div class="tog ${d.ret?'on':''}"></div></div>
     ${d.ret?`<div class="field" style="margin-top:-2px"><label class="label">Return departure</label><input class="inp tnum" type="time" value="${d.retTime}" onchange="CV.cd('retTime',this.value)"></div>`:''}
@@ -383,6 +471,12 @@ function renderCreate(){
 function cd(k,v){ draft[k]=v; renderCreate(); }
 function cdRaw(k,v){ draft[k]=v; }
 function toggleDay(i){ const x=draft.days.indexOf(i); if(x>=0)draft.days.splice(x,1); else draft.days.push(i); renderCreate(); }
+function swapRoute(){
+  const p=draft.pickup, q=draft.dest;
+  draft.pickup = q ? {name:q.name, detail:q.detail, lat:q.lat, lng:q.lng} : null;
+  draft.dest   = p ? {name:p.name, detail:p.detail, lat:p.lat, lng:p.lng} : draft.dest;
+  draft.destIsDefault=false; renderCreate();
+}
 let acTimer;
 function acSearch(field,q){
   const box=$('#ac-'+field); if(!box) return;
@@ -407,6 +501,7 @@ async function publishRide(){
   if(!d.pickup){ toast('Pick a pick-up location first'); return; }
   if(!d.dest){ toast('Choose a destination'); return; }
   if(d.freq==='recurring' && !d.days.length){ toast('Choose at least one day'); return; }
+  if(d.freq==='recurring' && d.startDate && d.endDate && d.endDate<d.startDate){ toast('End date must be after the start date'); return; }
   if(d.freq==='onetime' && !d.date){ toast('Pick a date'); return; }
   const btn=$('#pubbtn'); if(btn){btn.disabled=true;btn.textContent='Saving…';}
   const g=currentGroupObj();
@@ -417,6 +512,7 @@ async function publishRide(){
     dest_name:d.dest.name, dest_addr:d.dest.detail||'', dest_lat:d.dest.lat, dest_lng:d.dest.lng,
     depart_time:d.time, seats_total:d.seats, frequency:d.freq, weekdays:d.freq==='recurring'?d.days:[],
     ride_date:d.freq==='onetime'?d.date:null, has_return:!!d.ret, return_time:d.ret?d.retTime:null,
+    start_date:d.freq==='recurring'?(d.startDate||null):null, end_date:d.freq==='recurring'?(d.endDate||null):null,
     fuel_share:d.type==='driver'?!!d.fuel:false, notes:d.notes||null,
   };
   try{
@@ -450,10 +546,23 @@ function occurrencesInRange(from,to){
     const dirs=userDirs(r);
     let dates=[];
     if(r.frequency==='onetime'){ if(r.ride_date) dates=[r.ride_date]; }
-    else { for(let x=new Date(from); x<=to; x=addDays(x,1)){ if((r.weekdays||[]).includes(x.getDay())) dates.push(fmtD(x)); } }
+    else {
+      const lo = r.start_date && r.start_date>f ? r.start_date : f;
+      const hi = r.end_date   && r.end_date<t   ? r.end_date   : t;
+      for(let x=new Date(lo+'T12:00'); fmtD(x)<=hi; x=addDays(x,1)){ if((r.weekdays||[]).includes(x.getDay())) dates.push(fmtD(x)); }
+    }
     dates.forEach(ds=>{ if(ds<f||ds>t) return;
-      dirs.forEach(dir=>{ const time = dir==='out'?r.depart_time:r.return_time; if(!time) return;
-        res.push({date:ds, time, dir, ride:r}); }); });
+      const exc = r._exc ? r._exc[ds] : null;
+      dirs.forEach(dir=>{
+        if(exc && ((dir==='out'&&exc.out_cancelled)||(dir==='ret'&&exc.ret_cancelled))) return;      // driver cancelled
+        const skey = ds+'|'+(dir==='out'?'outbound':'return');
+        if(!r._mine && r._skips && r._skips.has(skey)) return;                                        // I cancelled my seat
+        let time = dir==='out'?r.depart_time:r.return_time;
+        if(exc){ if(dir==='out'&&exc.depart_time) time=exc.depart_time; if(dir==='ret'&&exc.return_time) time=exc.return_time; }
+        if(!time) return;
+        res.push({date:ds, time, dir, ride:r});
+      });
+    });
   });
   res.sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
   return res;
@@ -469,7 +578,7 @@ function viewRides(){
   const v=store.ridesView||'schedule';
   const seg=`<div class="seg" style="margin-bottom:14px"><button class="${v==='schedule'?'on':''}" onclick="CV.setRidesView('schedule')">Schedule</button><button class="${v!=='schedule'?'on':''}" onclick="CV.setRidesView('month')">Calendar</button></div>`;
   const body = v==='schedule' ? scheduleView() : calendarView();
-  return `<div class="wrap">${seg}${body}<div style="height:14px"></div><button class="btn primary" onclick="CV.openCreate()">${I.plus} Create a ride</button></div>`;
+  return `<div class="wrap">${seg}${body}</div>`;
 }
 function emptyMyRides(){ return `<div class="empty"><div class="ei">${I.rides}</div><div class="et">No upcoming rides</div><div class="ed">Rides you create or join appear here, soonest first.</div><div class="ebtns"><button class="btn primary" onclick="CV.go('group')">Find a ride</button></div></div>`; }
 
@@ -489,7 +598,7 @@ function dayHeading(ds){
 function occCard(o){
   const r=o.ride, L=occLabel(o);
   const roleCol=r._mine?'background:var(--accent-weak);color:var(--accent-ink)':'background:var(--good-weak);color:var(--good)';
-  return `<div class="card ride tap" onclick="CV.openRide('${r.id}')">
+  return `<div class="card ride tap" onclick="CV.openOccurrence('${r.id}','${o.date}','${o.dir}')">
     <div class="ride-top"><div class="pin ${r.type}">${r.type==='taxi'?I.taxi:I.car}</div>
       <div class="ride-head"><div class="route-min">${esc(L.from)}<span class="arw">→</span><span class="dst">${esc(L.to)}</span></div>
         <div class="ride-sub"><span class="tag-role" style="${roleCol}">${L.role}</span> · ${L.dir}${r.frequency==='recurring'?' · recurring':''}</div></div>
@@ -532,7 +641,7 @@ function dayView(){
   evs.forEach(e=>{
     const top=Math.max(0,(e.start-H0*60)/60*hourH);
     const L=occLabel(e.o), r=e.o.ride;
-    blocks+=`<div class="tl-ev ${r.type}" style="top:${top}px;left:calc(54px + (100% - 62px) * ${e.lane} / ${lanes});width:calc((100% - 62px) / ${lanes} - 4px)" onclick="CV.openRide('${r.id}')">
+    blocks+=`<div class="tl-ev ${r.type}" style="top:${top}px;left:calc(54px + (100% - 62px) * ${e.lane} / ${lanes});width:calc((100% - 62px) / ${lanes} - 4px)" onclick="CV.openOccurrence('${r.id}','${e.o.date}','${e.o.dir}')">
       <div class="tl-ev-t tnum">${e.o.time} · ${L.dir}</div><div class="tl-ev-r">${esc(L.from)} → ${esc(L.to)}</div></div>`;
   });
   if(!occ.length) blocks=`<div class="tl-empty">No rides on this day</div>`;
@@ -735,11 +844,12 @@ function toggleTheme(){
 /* ===================== EXPORT HANDLERS ===================== */
 export const CV = {
   go, toggleTheme, openRide, openJoin, setJoin, setJoinDate, doJoin, leaveRide,
-  confirmCancelRide, doCancel, openCreate, openEdit, cd, cdRaw, toggleDay, acSearch, pickAddr, publishRide,
+  confirmCancelRide, doCancel, openCreate, openEdit, cd, cdRaw, toggleDay, swapRoute, acSearch, pickAddr, publishRide,
   setView, toggleAvail, cycleType, openTimeFilter, quickTime, applyTimeFilter, widenTime, toggleLoc,
   openGroupSwitcher, switchGroup, tryJoinGroup, enterGroup, openCreateGroup, doCreateGroup, acSearchG, pickAddrG,
   openGroupDetail, copyInvite, confirmDeleteAccount, delCheck, doDeleteAccount,
   markAllRead, openEditProfile, saveProfile, pickPhoto, confirmLogout, doLogout,
   setRidesView, calPrev, calNext, calSelectDay,
-  openMaps, closeSheet,
+  openOccurrence, cancelOccDate, doCancelOcc, editOccDate, doEditOcc, skipOccDate, doSkipOcc,
+  openMaps, closeSheet, closeModal,
 };

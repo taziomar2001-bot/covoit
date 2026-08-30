@@ -17,6 +17,7 @@ try { const t=localStorage.getItem('cv_theme'); if(t) store.theme=t;
 } catch(e){}
 document.documentElement.setAttribute('data-theme', store.theme);
 initSheetGestures();
+document.getElementById('modalScrim').addEventListener('click', () => CV.closeModal());
 
 const killBoot = () => document.getElementById('boot')?.remove();
 let booted=false;

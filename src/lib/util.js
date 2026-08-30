@@ -37,6 +37,10 @@ export function showSheet(head, body, foot, opts={}){
 }
 export function closeSheet(){ const sh=$('#sheet'); sh.style.transform=''; sh.classList.remove('on'); $('#scrim').classList.remove('on'); }
 
+// centered modal (alerts)
+export function showModal(html){ const m=$('#modal'); m.innerHTML=html; $('#modalScrim').classList.add('on'); requestAnimationFrame(()=>m.classList.add('on')); }
+export function closeModal(){ $('#modal').classList.remove('on'); $('#modalScrim').classList.remove('on'); }
+
 // Drag the sheet down (from the handle/header, or from the body when scrolled to top) to dismiss.
 export function initSheetGestures(){
   const sh=$('#sheet'); let startY=null, dragging=false;
