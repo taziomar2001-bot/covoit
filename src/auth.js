@@ -3,7 +3,7 @@ import { $, esc, toast } from './lib/util.js';
 import * as api from './lib/api.js';
 
 let view='login';
-let signupPhotoFile=null, signupPhotoUrl=null, signupHasCar=false;
+let signupPhotoFile=null, signupPhotoUrl=null;
 
 export function renderAuth(){
   $('#topbar').hidden=true; $('#nav').hidden=true;
@@ -36,7 +36,6 @@ function viewSignup(){
       <div class="field"><label class="label">Password</label>
         <div style="position:relative"><input class="inp" id="su-pass" type="password" placeholder="Choose a password (min 6 chars)" style="padding-right:74px">
         <button type="button" onclick="AV.togglePw('su-pass',this)" style="position:absolute;right:8px;top:8px;bottom:8px;padding:0 12px;font-size:12.5px;font-weight:600;color:var(--accent);background:transparent">Show</button></div></div>
-      <div class="switch" onclick="AV.toggleCar()"><div><div class="st">I have a car</div><div class="sd">Add vehicle details later in Profile</div></div><div class="tog ${signupHasCar?'on':''}" id="su-cartog"></div></div>
       <div class="field"><label class="label">Group invite code <span class="mut">· optional</span></label><input class="inp" id="su-code" placeholder="e.g. MIM27" style="text-transform:uppercase"><div class="mut" style="font-size:12px;margin-top:7px;display:flex;gap:7px;align-items:flex-start">${I.info}<span>Have a code from a classmate? Enter it and your group's rides are ready the moment you're in.</span></div></div>
       <button class="btn primary" id="su-btn" onclick="AV.signup()">Create account</button>
     </div>
@@ -63,7 +62,7 @@ async function signup(){
   const btn=$('#su-btn'); btn.disabled=true; btn.textContent='Creating…';
   // Set this BEFORE signUp so the SIGNED_IN event (which can fire during the await)
   // always finds it — otherwise the photo/car/code could be dropped on first sign-up.
-  window.__pendingSignup = { photoFile: signupPhotoFile, hasCar: signupHasCar, code };
+  window.__pendingSignup = { photoFile: signupPhotoFile, code };
   try{
     const res=await api.signUp({ email, password:pass, first, last, phone });
     if(!res.session){ // email confirmation required
@@ -81,7 +80,6 @@ async function forgot(){
   if(!email){ toast('Enter your email first'); return; }
   try{ await api.resetPassword(email); toast('Password reset link sent'); }catch(e){ toast('Could not send reset email'); }
 }
-function toggleCar(){ signupHasCar=!signupHasCar; $('#su-cartog')?.classList.toggle('on',signupHasCar); }
 function goto(v){ view=v; renderAuth(); }
 function pickPhoto(){
   const inp=$('#filepick'); inp.value='';
@@ -98,4 +96,4 @@ function friendly(e){ const m=String(e.message||e).toLowerCase();
 function togglePw(id, btn){ const el=document.getElementById(id); if(!el) return;
   const show = el.type==='password'; el.type = show?'text':'password'; btn.textContent = show?'Hide':'Show'; }
 
-export const AV = { login, signup, forgot, toggleCar, goto, pickPhoto, togglePw };
+export const AV = { login, signup, forgot, goto, pickPhoto, togglePw };

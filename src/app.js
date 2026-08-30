@@ -229,7 +229,7 @@ async function openRide(id){
   const left=r._seatsLeft, full=isFull(r), member=r._mine||r._joinedByMe;
   const total=r._participants.length+(r._joinedByMe?1:0);
   const badge = r.type==='taxi'?`<span class="chip taxi">${I.taxi} Shared taxi</span>`:`<span class="chip driver">${I.car} Driver ride</span>`;
-  const vehicle = r.type==='driver'?`<div class="kv"><div class="k">${I.car}</div><div><div class="kk">VEHICLE</div><div class="vv">${r._mine&&store.profile?.vehicle_model?esc(store.profile.vehicle_model+' · '+(store.profile.vehicle_color||'')):'Registered vehicle'}</div></div></div>`:'';
+  const vehicle = '';
   const body=`
     <div class="route-line">
       <div class="rl-row"><div class="rl-dots"><div class="rl-dot"></div><div class="rl-bar"></div></div>
@@ -427,27 +427,123 @@ async function publishRide(){
   }catch(e){ if(btn){btn.disabled=false;btn.textContent=editingId?'Save changes':'Publish ride';} toast('Could not save: '+(e.message||'error')); }
 }
 
-/* ===================== MY RIDES ===================== */
-function viewRides(){
-  const list=store._myrides||[];
-  const sec=(title,arr,empty)=>`<div class="section-h">${title}</div>`+(arr.length?arr.map(myRow).join(''):`<div class="card"><div class="sr">${empty}</div></div>`);
-  return `<div class="wrap">
-    ${sec('Recurring commutes', list.filter(r=>r.frequency==='recurring'), 'No recurring rides yet')}
-    ${sec('One-time trips', list.filter(r=>r.frequency==='onetime'), 'No one-time trips booked')}
-    <div style="height:8px"></div><button class="btn primary" onclick="CV.openCreate()">${I.plus} Create a ride</button>
-  </div>`;
+/* ===================== MY RIDES: schedule + calendar ===================== */
+const pad2 = n => (n<10?'0':'')+n;
+const fmtD = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const startOfDay = d => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
+const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const toMin = t => { const [h,m]=t.split(':').map(Number); return h*60+m; };
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+function userDirs(r){
+  if(r._mine) return r.has_return?['out','ret']:['out'];
+  const j=r._joinedByMe||''; const d=[];
+  if(j.includes('Outbound')) d.push('out');
+  if(j.includes('Return')) d.push('ret');
+  return d.length?d:['out'];
 }
-function myRow(r){
-  const role=r._mine?(r.type==='taxi'?'You organise':'You drive'):(r.type==='taxi'?'Taxi participant':'Passenger');
-  const col=r._mine?'background:var(--accent-weak);color:var(--accent-ink)':'background:var(--good-weak);color:var(--good)';
+// Expand every ride the user is on into concrete dated occurrences within [from,to].
+function occurrencesInRange(from,to){
+  const list=store._myrides||[]; const res=[]; const f=fmtD(from), t=fmtD(to);
+  list.forEach(r=>{
+    const dirs=userDirs(r);
+    let dates=[];
+    if(r.frequency==='onetime'){ if(r.ride_date) dates=[r.ride_date]; }
+    else { for(let x=new Date(from); x<=to; x=addDays(x,1)){ if((r.weekdays||[]).includes(x.getDay())) dates.push(fmtD(x)); } }
+    dates.forEach(ds=>{ if(ds<f||ds>t) return;
+      dirs.forEach(dir=>{ const time = dir==='out'?r.depart_time:r.return_time; if(!time) return;
+        res.push({date:ds, time, dir, ride:r}); }); });
+  });
+  res.sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+  return res;
+}
+function occLabel(o){ const r=o.ride;
+  return { from: o.dir==='out'?r.pickup_name:destShort(r),
+           to:   o.dir==='out'?destShort(r):r.pickup_name,
+           role: r._mine?(r.type==='taxi'?'Organiser':'Driver'):(r.type==='taxi'?'Taxi':'Passenger'),
+           dir:  o.dir==='out'?'Outbound':'Return' };
+}
+
+function viewRides(){
+  const v=store.ridesView||'schedule';
+  const seg=`<div class="seg" style="margin-bottom:14px"><button class="${v==='schedule'?'on':''}" onclick="CV.setRidesView('schedule')">Schedule</button><button class="${v!=='schedule'?'on':''}" onclick="CV.setRidesView('month')">Calendar</button></div>`;
+  const body = v==='schedule' ? scheduleView() : calendarView();
+  return `<div class="wrap">${seg}${body}<div style="height:14px"></div><button class="btn primary" onclick="CV.openCreate()">${I.plus} Create a ride</button></div>`;
+}
+function emptyMyRides(){ return `<div class="empty"><div class="ei">${I.rides}</div><div class="et">No upcoming rides</div><div class="ed">Rides you create or join appear here, soonest first.</div><div class="ebtns"><button class="btn primary" onclick="CV.go('group')">Find a ride</button></div></div>`; }
+
+function scheduleView(){
+  const today=startOfDay(new Date());
+  const occ=occurrencesInRange(today, addDays(today,60));
+  if(!occ.length) return emptyMyRides();
+  let html='', last=null;
+  occ.forEach(o=>{ if(o.date!==last){ last=o.date; html+=`<div class="section-h">${dayHeading(o.date)}</div>`; } html+=occCard(o); });
+  return html;
+}
+function dayHeading(ds){
+  const d=new Date(ds+'T12:00'), today=fmtD(new Date()), tmr=fmtD(addDays(new Date(),1));
+  const label=d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'});
+  if(ds===today) return 'Today · '+label; if(ds===tmr) return 'Tomorrow · '+label; return label;
+}
+function occCard(o){
+  const r=o.ride, L=occLabel(o);
+  const roleCol=r._mine?'background:var(--accent-weak);color:var(--accent-ink)':'background:var(--good-weak);color:var(--good)';
   return `<div class="card ride tap" onclick="CV.openRide('${r.id}')">
     <div class="ride-top"><div class="pin ${r.type}">${r.type==='taxi'?I.taxi:I.car}</div>
-      <div class="ride-head"><div class="route-min">${esc(r.pickup_name)}<span class="arw">→</span><span class="dst">${esc(destShort(r))}</span></div>
-        <div class="ride-sub"><span class="tag-role" style="${col}">${role}</span> · ${r.frequency==='recurring'?freqLabel(r):freqLabel(r)}${r._joinedByMe?' · '+r._joinedByMe:''}</div></div>
-      <div class="time-badge tnum">${r.depart_time}</div></div>
-    <div class="ride-foot"><div class="who">${r._mine?`${I.users} ${r._participants.length} aboard · ${r._seatsLeft} seat${r._seatsLeft!==1?'s':''} left`:`<span class="ava mut">${inits(r.creator_name)}</span>${esc(r.creator_name)}`}</div>${r.has_return?`<span class="chip">${I.repeat} Return ${r.return_time}</span>`:''}</div>
-  </div>`;
+      <div class="ride-head"><div class="route-min">${esc(L.from)}<span class="arw">→</span><span class="dst">${esc(L.to)}</span></div>
+        <div class="ride-sub"><span class="tag-role" style="${roleCol}">${L.role}</span> · ${L.dir}${r.frequency==='recurring'?' · recurring':''}</div></div>
+      <div class="time-badge tnum">${o.time}</div></div></div>`;
 }
+
+function calendarView(){
+  const sub=`<div class="seg" style="margin-bottom:14px"><button class="${store.ridesView==='month'?'on':''}" onclick="CV.setRidesView('month')">Month</button><button class="${store.ridesView==='day'?'on':''}" onclick="CV.setRidesView('day')">Day</button></div>`;
+  return sub + (store.ridesView==='day'?dayView():monthView());
+}
+function monthView(){
+  const anchor=new Date(store.calDate); anchor.setDate(1);
+  const y=anchor.getFullYear(), m=anchor.getMonth();
+  const startWd=(new Date(y,m,1).getDay()+6)%7;               // Monday-first
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const occ=occurrencesInRange(new Date(y,m,1), new Date(y,m,daysInMonth));
+  const counts={}; occ.forEach(o=>counts[o.date]=(counts[o.date]||0)+1);
+  const todayStr=fmtD(new Date());
+  let cells='';
+  for(let i=0;i<startWd;i++) cells+=`<div class="cal-cell empty"></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const ds=`${y}-${pad2(m+1)}-${pad2(day)}`, c=counts[ds]||0;
+    cells+=`<div class="cal-cell ${c?'has':''} ${ds===todayStr?'today':''}" onclick="CV.calSelectDay('${ds}')"><div class="cn">${day}</div>${c?`<div class="cnt">${c}</div>`:'<div class="cdot"></div>'}</div>`;
+  }
+  return `<div class="cal-head"><button class="iconbtn" onclick="CV.calPrev()">${I.back}</button><div class="cal-title">${MONTHS[m]} ${y}</div><button class="iconbtn" onclick="CV.calNext()">${I.chev}</button></div>
+    <div class="cal-grid dow">${WD.map(d=>`<div class="cal-dow">${d[0]}</div>`).join('')}</div>
+    <div class="cal-grid">${cells}</div>
+    <div class="sr" style="text-align:left;padding:12px 2px 0">Tap a day to open its schedule.</div>`;
+}
+function dayView(){
+  const d=new Date(store.calDate);
+  const occ=occurrencesInRange(startOfDay(d), startOfDay(d));
+  const H0=6, H1=23, hourH=54, height=(H1-H0+1)*hourH;
+  let hours='';
+  for(let h=H0;h<=H1;h++) hours+=`<div class="tl-row" style="height:${hourH}px"><span class="tl-time tnum">${pad2(h)}:00</span></div>`;
+  const evs=occ.map(o=>({o,start:toMin(o.time),end:toMin(o.time)+45})).sort((a,b)=>a.start-b.start);
+  const laneEnds=[]; evs.forEach(e=>{ let lane=laneEnds.findIndex(end=>end<=e.start); if(lane<0){lane=laneEnds.length;laneEnds.push(e.end);} else laneEnds[lane]=e.end; e.lane=lane; });
+  const lanes=Math.max(1,laneEnds.length);
+  let blocks='';
+  evs.forEach(e=>{
+    const top=Math.max(0,(e.start-H0*60)/60*hourH);
+    const L=occLabel(e.o), r=e.o.ride;
+    blocks+=`<div class="tl-ev ${r.type}" style="top:${top}px;left:calc(54px + (100% - 62px) * ${e.lane} / ${lanes});width:calc((100% - 62px) / ${lanes} - 4px)" onclick="CV.openRide('${r.id}')">
+      <div class="tl-ev-t tnum">${e.o.time} · ${L.dir}</div><div class="tl-ev-r">${esc(L.from)} → ${esc(L.to)}</div></div>`;
+  });
+  if(!occ.length) blocks=`<div class="tl-empty">No rides on this day</div>`;
+  return `<div class="cal-head"><button class="iconbtn" onclick="CV.calPrev()">${I.back}</button><div class="cal-title">${d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</div><button class="iconbtn" onclick="CV.calNext()">${I.chev}</button></div>
+    <div class="daytl" style="height:${height}px">${hours}${blocks}</div>`;
+}
+function setRidesView(v){ store.ridesView=v; render(); }
+function shiftCal(dir){ const d=new Date(store.calDate); if(store.ridesView==='day') d.setDate(d.getDate()+dir); else d.setMonth(d.getMonth()+dir); store.calDate=d; render(); }
+function calPrev(){ shiftCal(-1); }
+function calNext(){ shiftCal(1); }
+function calSelectDay(ds){ store.calDate=new Date(ds+'T12:00'); store.ridesView='day'; render(); }
 
 /* ===================== PROFILE ===================== */
 function viewProfile(){
@@ -458,9 +554,6 @@ function viewProfile(){
       <div style="flex:1;min-width:0"><div class="prof-name">${esc(meName())}</div><div class="prof-sub">${esc(store.user?.email||'')}</div></div>
       <button class="btn sm ghost" onclick="CV.openEditProfile()">${I.edit} Edit</button>
     </div>
-    <div class="section-h">Vehicle</div>
-    ${p.has_car?`<div class="listrow tap" onclick="CV.openEditProfile()"><span class="lri">${I.car}</span><div><div class="lrt">${esc(p.vehicle_model||'My car')}</div><div class="prof-sub">${esc(p.vehicle_color||'')}${p.vehicle_seats?' · '+p.vehicle_seats+' seats':''}</div></div><span class="lrv">${I.chev}</span></div>`
-      :`<div class="listrow tap" onclick="CV.openEditProfile()"><span class="lri">${I.add}</span><div class="lrt">Add a vehicle</div><span class="lrv">${I.chev}</span></div>`}
     <div class="section-h">Groups</div>
     ${store.groups.length ? store.groups.map(g=>`<div class="listrow tap" onclick="CV.openGroupDetail('${g.id}')"><span class="lri" style="font-size:19px">🎓</span><div><div class="lrt">${esc(g.name)}</div><div class="prof-sub">Code ${esc(g.invite_code)} · ${g.members||0} members · tap for details</div></div><span class="lrv">${I.chev}</span></div>`).join('') : `<div class="listrow" style="color:var(--ink-3)"><span class="lri">${I.users}</span><div class="lrt" style="font-weight:500">Not in any group yet</div></div>`}
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="CV.openGroupSwitcher()">${I.add} Join or create a group</button>
@@ -477,26 +570,20 @@ function viewProfile(){
 let editDraft=null;
 function openEditProfile(keep){
   const p=store.profile||{};
-  if(!keep) editDraft={ first:p.first_name||'', last:p.last_name||'', phone:p.phone||'', photo:p.photo_url||null,
-    car:!!p.has_car, model:p.vehicle_model||'', color:p.vehicle_color||'', seats:p.vehicle_seats||4 };
+  if(!keep) editDraft={ first:p.first_name||'', last:p.last_name||'', phone:p.phone||'', photo:p.photo_url||null };
   const d=editDraft;
   showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Edit profile</div><button class="closex" onclick="CV.closeSheet()">${I.x}</button></div>`,
     `<div class="photo-pick" onclick="CV.pickPhoto('edit')"><div class="pp-ava" style="${d.photo?`background-image:url(${esc(d.photo)});border-style:solid`:''}">${d.photo?'':I.cam}</div><div><div class="pp-t">Change photo</div><div class="pp-d">Tap to upload</div></div></div>
      <div class="grid2"><div class="field"><label class="label">First name</label><input class="inp" id="e-first" value="${esc(d.first)}"></div><div class="field"><label class="label">Last name</label><input class="inp" id="e-last" value="${esc(d.last)}"></div></div>
      <div class="field"><label class="label">Phone number <span class="mut">· with country code</span></label><input class="inp" id="e-phone" type="tel" inputmode="tel" value="${esc(d.phone)}" placeholder="+34 600 000 000"><div class="mut" style="font-size:12px;margin-top:6px">Include your country code (e.g. +34) so ride-mates can WhatsApp/call you.</div></div>
-     <div class="switch" onclick="CV.editToggleCar()"><div><div class="st">I have a car</div></div><div class="tog ${d.car?'on':''}"></div></div>
-     ${d.car?`<div class="grid2"><div class="field"><label class="label">Model</label><input class="inp" id="e-model" value="${esc(d.model)}"></div><div class="field"><label class="label">Colour</label><input class="inp" id="e-color" value="${esc(d.color)}"></div></div>
-     <div class="field"><label class="label">Passenger capacity</label><div class="numpick">${[1,2,3,4,5,6].map(n=>`<button class="day ${d.seats===n?'on':''}" onclick="CV.editSeats(${n})">${n}</button>`).join('')}</div></div>`:''}`,
+`,
     `<button class="btn ghost" onclick="CV.closeSheet()">Cancel</button><button class="btn primary" onclick="CV.saveProfile()">Save changes</button>`,
     { tall:true, scrollTop:(document.querySelector('.sheet.on .sheet-body')?.scrollTop||0) });
 }
-function editToggleCar(){ editDraft.car=!editDraft.car; openEditProfile(true); }
-function editSeats(n){ editDraft.seats=n; openEditProfile(true); }
 async function saveProfile(){
   const g=id=>$('#'+id)?.value;
   const patch={ id:store.user.id, first_name:g('e-first')||'', last_name:g('e-last')||'', phone:g('e-phone')||'',
-    photo_url:editDraft.photo, has_car:editDraft.car,
-    vehicle_model:editDraft.car?(g('e-model')||''):null, vehicle_color:editDraft.car?(g('e-color')||''):null, vehicle_seats:editDraft.car?editDraft.seats:null };
+    photo_url:editDraft.photo };
   try{ await api.upsertProfile(patch); store.profile={...store.profile,...patch}; closeSheet();
     setTimeout(()=>{ toast('Profile saved'); render(); renderTopbar(); },220);
   }catch(e){ toast('Could not save profile'); }
@@ -652,6 +739,7 @@ export const CV = {
   setView, toggleAvail, cycleType, openTimeFilter, quickTime, applyTimeFilter, widenTime, toggleLoc,
   openGroupSwitcher, switchGroup, tryJoinGroup, enterGroup, openCreateGroup, doCreateGroup, acSearchG, pickAddrG,
   openGroupDetail, copyInvite, confirmDeleteAccount, delCheck, doDeleteAccount,
-  markAllRead, openEditProfile, saveProfile, pickPhoto, editToggleCar, editSeats, confirmLogout, doLogout,
+  markAllRead, openEditProfile, saveProfile, pickPhoto, confirmLogout, doLogout,
+  setRidesView, calPrev, calNext, calSelectDay,
   openMaps, closeSheet,
 };

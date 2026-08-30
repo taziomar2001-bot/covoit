@@ -10,6 +10,8 @@ export const store = {
   // group screen ui state
   groupView: 'map', filterAvail: true, filterType: 'all', timeFrom: '06:00', timeTo: '10:00',
   tab: 'home',
+  // my-rides ui state
+  ridesView: 'schedule', calDate: new Date(),
 };
 
 export async function refreshSession() {

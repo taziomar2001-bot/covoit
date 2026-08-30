@@ -33,11 +33,9 @@ async function boot(session){
   if(!session){ renderAuth(); return; }
   // handle post-signup extras once
   if(window.__pendingSignup){
-    const { photoFile, hasCar, code } = window.__pendingSignup; window.__pendingSignup=null;
+    const { photoFile, code } = window.__pendingSignup; window.__pendingSignup=null;
     try{
-      const patch={ id:session.user.id, has_car:!!hasCar };
-      if(photoFile){ try{ patch.photo_url = await api.uploadAvatar(session.user.id, photoFile); }catch(e){} }
-      await api.upsertProfile(patch);
+      if(photoFile){ try{ const url=await api.uploadAvatar(session.user.id, photoFile); await api.upsertProfile({ id:session.user.id, photo_url:url }); }catch(e){} }
       if(code){ try{ await api.joinGroup(code); }catch(e){} }
     }catch(e){}
   }
