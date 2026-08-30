@@ -380,4 +380,21 @@ create policy avatars_write on storage.objects for insert
 drop policy if exists avatars_update on storage.objects;
 create policy avatars_update on storage.objects for update using (bucket_id = 'avatars' and owner = auth.uid());
 
+-- ---------------------------------------------------------------------------
+-- GRANTS — the app's roles need table/function privileges (RLS still governs
+-- which rows). Without these, writes fail with "permission denied for table".
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant all on all tables in schema public to anon, authenticated;
+grant all on all sequences in schema public to anon, authenticated;
+grant execute on all functions in schema public to anon, authenticated;
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+alter default privileges in schema public grant execute on functions to anon, authenticated;
+
+-- Live in-app notifications via Realtime.
+do $$ begin
+  alter publication supabase_realtime add table public.notifications;
+exception when duplicate_object then null; when others then null; end $$;
+
 -- Done.

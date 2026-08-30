@@ -58,18 +58,20 @@ async function signup(){
   if(!first||!email||!pass){ toast('Name, email and password are required'); return; }
   if(pass.length<6){ toast('Password must be at least 6 characters'); return; }
   const btn=$('#su-btn'); btn.disabled=true; btn.textContent='Creating…';
+  // Set this BEFORE signUp so the SIGNED_IN event (which can fire during the await)
+  // always finds it — otherwise the photo/car/code could be dropped on first sign-up.
+  window.__pendingSignup = { photoFile: signupPhotoFile, hasCar: signupHasCar, code };
   try{
     const res=await api.signUp({ email, password:pass, first, last, phone });
     if(!res.session){ // email confirmation required
+      window.__pendingSignup = null;
       btn.disabled=false; btn.textContent='Create account';
       toast('Check your email to confirm your account, then log in');
       view='login'; renderAuth();
       return;
     }
-    // signed in immediately: finish profile extras
-    window.__pendingSignup = { photoFile: signupPhotoFile, hasCar: signupHasCar, code };
     /* main.js onAuthStateChange handles post-signup setup */
-  }catch(e){ btn.disabled=false; btn.textContent='Create account'; toast(friendly(e)); }
+  }catch(e){ window.__pendingSignup=null; btn.disabled=false; btn.textContent='Create account'; toast(friendly(e)); }
 }
 async function forgot(){
   const email=$('#li-email').value.trim();
