@@ -1,6 +1,6 @@
 import './styles.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { supabase } from './lib/supabase.js';
+import { supabase, CONFIG_OK } from './lib/supabase.js';
 import { store, loadAll } from './lib/store.js';
 import * as api from './lib/api.js';
 import { CV, enterApp, renderTopbar, render } from './app.js';
@@ -18,6 +18,14 @@ document.documentElement.setAttribute('data-theme', store.theme);
 
 let booted=false;
 async function boot(session){
+  if(!CONFIG_OK){
+    document.getElementById('topbar').hidden=true; document.getElementById('nav').hidden=true;
+    document.getElementById('screen').innerHTML =
+      '<div style="padding:48px 24px;text-align:center;max-width:360px;margin:0 auto;color:var(--ink)">'+
+      '<div style="font-size:20px;font-weight:700;margin-bottom:8px">Almost there</div>'+
+      '<div style="color:var(--ink-3);font-size:14px;line-height:1.5">This build is missing its Supabase settings. In Netlify set <b>VITE_SUPABASE_URL</b> and <b>VITE_SUPABASE_ANON_KEY</b>, then redeploy with “Clear cache and deploy site”.</div></div>';
+    return;
+  }
   if(!session){ renderAuth(); return; }
   // handle post-signup extras once
   if(window.__pendingSignup){
@@ -45,15 +53,19 @@ function subscribeRealtime(uid){
     .subscribe();
 }
 
-supabase.auth.onAuthStateChange((_event, session) => {
+supabase.auth.onAuthStateChange((event, session) => {
   store.session = session; store.user = session?.user || null;
-  if(!booted){ booted=true; boot(session); }
-  else if(!session){ location.reload(); }
+  if(!booted){ booted=true; boot(session); return; }
+  if(event === 'SIGNED_IN'){ boot(session); }        // login or sign-up completed → enter app
+  else if(event === 'SIGNED_OUT'){ location.reload(); }
+  // ignore INITIAL_SESSION / TOKEN_REFRESHED / USER_UPDATED — no reload
 });
 
-// PWA service worker (installability + offline shell)
+// Clear any previously-registered service worker + caches (they could serve a stale blank page).
+// PWA offline caching can be re-added later once the app is stable.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+  if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
 }
 
 // initial check in case the event fired before listener (rare)

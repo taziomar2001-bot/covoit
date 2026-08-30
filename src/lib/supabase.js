@@ -13,3 +13,4 @@ export const supabase = createClient(url || 'http://localhost', anon || 'anon', 
 });
 
 export const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY || '';
+export const CONFIG_OK = !!(url && anon);
