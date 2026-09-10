@@ -13,7 +13,7 @@ export function renderAuth(){
 }
 function viewLogin(){
   return `<div class="auth">
-    <div class="auth-top"><div class="auth-logo">Co</div><div class="auth-h">Welcome back</div><div class="auth-p">Sign in to see who's heading to campus.</div></div>
+    <div class="auth-top"><img class="auth-logo" src="/icon-192.png" alt="CoVoit"><div class="auth-h">Welcome back</div><div class="auth-p">Sign in to see who's heading to campus.</div></div>
     <div class="auth-form">
       <div class="field"><label class="label">Email</label><input class="inp" id="li-email" type="email" placeholder="you@university.edu"></div>
       <div class="field"><label class="label">Password</label>

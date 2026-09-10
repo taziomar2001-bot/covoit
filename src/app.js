@@ -61,7 +61,7 @@ export function renderTopbar(){
   const themeBtn = `<button class="iconbtn" onclick="CV.toggleTheme()">${store.theme==='dark'?I.sun:I.moon}</button>`;
   const bellBtn  = `<button class="iconbtn" onclick="CV.go('notif')">${I.bell}${store.notifications.some(n=>!n.read)?'<span class="dot"></span>':''}</button>`;
   const t = store.tab;
-  if (t==='home') tb.innerHTML = `<div class="logo"><div class="mark">Co</div><div><div class="tb-title">CoVoit</div><div class="tb-sub">Hi, ${esc(store.profile?.first_name||'there')}</div></div></div><div class="spacer"></div>${themeBtn}${bellBtn}`;
+  if (t==='home') tb.innerHTML = `<div class="logo"><img class="mark-img" src="/icon-192.png" alt="CoVoit"><div><div class="tb-title">CoVoit</div><div class="tb-sub">Hi, ${esc(store.profile?.first_name||'there')}</div></div></div><div class="spacer"></div>${themeBtn}${bellBtn}`;
   else if (t==='group'){ const g=currentGroupObj();
     tb.innerHTML = `<button class="tb-switch" onclick="CV.openGroupSwitcher()"><div style="text-align:left"><div class="tb-title">${esc(g?g.name.split('·')[0].trim():'No group')}</div><div class="tb-sub">→ ${esc(gShort(g))} · tap to switch</div></div>${I.chevd}</button><div class="spacer"></div>${themeBtn}${bellBtn}`; }
   else if (t==='rides') tb.innerHTML = `<div><div class="tb-title">My Rides</div><div class="tb-sub">Your commute schedule</div></div><div class="spacer"></div>${themeBtn}${bellBtn}`;
