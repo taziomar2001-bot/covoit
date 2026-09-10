@@ -19,8 +19,35 @@ const meInits = () => inits(meName());
 function distTo(r){ return store.myLoc ? haversine(store.myLoc, {lat:r.pickup_lat,lng:r.pickup_lng}) : null; }
 function inTime(r){ return r.depart_time >= store.timeFrom && r.depart_time <= store.timeTo; }
 
+function nowHM(){ const d=new Date(); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+// A ride is still relevant on the map/list only if it has an occurrence now or later
+// (mirrors My Rides, which only lists from today forward).
+function rideUpcoming(r){
+  const today=fmtD(new Date()), nowT=nowHM();
+  const latest = (r.has_return && r.return_time) ? r.return_time : r.depart_time; // last time it "runs" that day
+  if(r.frequency==='onetime'){
+    if(!r.ride_date) return true;
+    if(r.ride_date > today) return true;
+    if(r.ride_date < today) return false;
+    return latest >= nowT;                       // today: keep until its last time has passed
+  }
+  // recurring: gone once the end date passes or no matching weekday remains
+  const end = r.end_date || null, start = r.start_date || null;
+  if(end && end < today) return false;
+  const from = (start && start > today) ? start : today;
+  const lo = new Date(from+'T12:00');
+  for(let i=0;i<420;i++){
+    const d=addDays(lo,i), ds=fmtD(d);
+    if(end && ds>end) return false;
+    if((r.weekdays||[]).includes(d.getDay())){
+      if(ds>today) return true;                  // a future day -> still upcoming
+      if(ds===today && latest>=nowT) return true; // today, not yet passed
+    }
+  }
+  return false;
+}
 function visibleRides(){
-  let rs = store.rides.filter(inTime);
+  let rs = store.rides.filter(rideUpcoming).filter(inTime);
   if (store.filterType !== 'all') rs = rs.filter(r => r.type === store.filterType);
   if (store.filterAvail) rs = rs.filter(r => !isFull(r) || r._mine);
   if (store.myLoc) rs.sort((a,b) => (distTo(a)??1e9) - (distTo(b)??1e9));
@@ -74,7 +101,7 @@ export function render(){
 /* ===================== HOME ===================== */
 function viewHome(){
   const g = currentGroupObj();
-  const avail = store.rides.filter(r => !r._mine && !isFull(r));
+  const avail = store.rides.filter(rideUpcoming).filter(r => !r._mine && !isFull(r));
   const near = avail.slice().sort((a,b)=>(distTo(a)??1e9)-(distTo(b)??1e9)).slice(0,3);
   const myNext = store.rides.find(r => r._mine) || store.rides.find(r => r._joinedByMe);
   const hero = myNext ? `
