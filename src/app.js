@@ -808,6 +808,55 @@ async function doCreateGroup(){
   }catch(e){ if(btn){btn.disabled=false;btn.textContent='Create group';} toast('Could not create group: '+(e.message||e.code||'error')); }
 }
 
+/* ---- edit / delete group (creator only) ---- */
+let geDraft=null;
+function openEditGroup(id){
+  const g=store.groups.find(x=>x.id===id); if(!g) return;
+  geDraft={ id, dest:{name:g.dest_name, detail:g.dest_addr, lat:g.dest_lat, lng:g.dest_lng} };
+  showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Edit group</div><button class="closex" onclick="CV.openGroupDetail('${id}')">${I.x}</button></div>`,
+    `<div class="field"><label class="label">Group name</label><input class="inp" id="ge-name" value="${esc(g.name)}"></div>
+     <div class="field"><label class="label">Description <span class="mut">· optional</span></label><input class="inp" id="ge-desc" value="${esc(g.description||'')}"></div>
+     <div class="field ac-wrap"><label class="label">Default destination</label><input class="inp" id="ge-dest" value="${esc(g.dest_name)}" oninput="CV.acSearchGE(this.value)" autocomplete="off"><div id="ac-ge"></div>
+       <div class="mut" style="font-size:12px;margin-top:7px;display:flex;gap:7px;align-items:flex-start">${I.info}<span>New rides will default here. Existing rides keep their own destinations.</span></div></div>`,
+    `<button class="btn ghost" onclick="CV.openGroupDetail('${id}')">Cancel</button><button class="btn primary" id="ge-btn" onclick="CV.saveGroupEdit()">Save changes</button>`, {tall:true});
+}
+function acSearchGE(q){
+  const box=$('#ac-ge'); if(!box) return; if(!q){ box.innerHTML=''; return; }
+  clearTimeout(acTimer); acTimer=setTimeout(async()=>{
+    const res=await geocode(q, store.myLoc); window._acge=res;
+    box.innerHTML=res.length?`<div class="ac-list">${res.map((s,i)=>`<div class="ac-item" onclick="CV.pickAddrGE(${i})"><span class="aci">${I.pin}</span><div><div class="acn">${esc(s.name)}</div><div class="acd">${esc(s.detail||'')}</div></div></div>`).join('')}</div>`:'';
+  },250);
+}
+function pickAddrGE(i){ const s=(window._acge||[])[i]; if(!s) return; geDraft.dest={name:s.name, detail:s.detail, lat:s.lat, lng:s.lng}; $('#ge-dest').value=s.name; $('#ac-ge').innerHTML=''; }
+async function saveGroupEdit(){
+  const name=$('#ge-name').value.trim(), desc=$('#ge-desc').value.trim();
+  if(!name){ toast('Name your group'); return; }
+  const btn=$('#ge-btn'); if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  const d=geDraft.dest;
+  try{
+    await api.updateGroup(geDraft.id, { name, description:desc, dest_name:d.name, dest_addr:d.detail||'', dest_lat:d.lat, dest_lng:d.lng });
+    await loadGroups(); closeSheet();
+    setTimeout(()=>{ toast('Group updated'); renderTopbar(); render(); },220);
+  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Save changes';} toast('Could not update: '+(e.message||'error')); }
+}
+function confirmDeleteGroup(id){
+  const g=store.groups.find(x=>x.id===id);
+  showSheet(`<div class="sheet-head"><div style="flex:1" class="sheet-title">Delete group?</div><button class="closex" onclick="CV.openGroupDetail('${id}')">${I.x}</button></div>`,
+    `<div class="banner danger">${I.info}<div>This permanently deletes <b>${esc(g?g.name:'this group')}</b> and <b>all of its rides and bookings</b> for every member. Everyone loses access. <b>This cannot be undone.</b></div></div>
+     <div class="field"><label class="label">Type DELETE to confirm</label><input class="inp" id="gdel-confirm" placeholder="DELETE" autocomplete="off" autocapitalize="characters" oninput="CV.gdelCheck(this.value)"></div>`,
+    `<button class="btn ghost" onclick="CV.openGroupDetail('${id}')">Cancel</button><button class="btn danger" id="gdel-btn" disabled onclick="CV.doDeleteGroup('${id}')">Delete forever</button>`);
+}
+function gdelCheck(v){ const b=$('#gdel-btn'); if(b) b.disabled = v.trim().toUpperCase()!=='DELETE'; }
+async function doDeleteGroup(id){
+  const b=$('#gdel-btn'); if(b){ b.disabled=true; b.textContent='Deleting…'; }
+  try{ await api.deleteGroup(id); }
+  catch(e){ if(b){ b.disabled=false; b.textContent='Delete forever'; } toast('Could not delete: '+(e.message||'error')); return; }
+  await loadGroups();
+  if(!store.groups.find(x=>x.id===store.currentGroup)) store.currentGroup = store.groups[0]?.id || null;
+  await loadRides(); closeSheet();
+  setTimeout(()=>{ toast('Group deleted'); store.tab='home'; renderTopbar(); renderNav(); render(); },220);
+}
+
 /* ===================== GROUP DETAIL ===================== */
 async function openGroupDetail(gid){
   const g=store.groups.find(x=>x.id===gid); if(!g) return; haptic();
@@ -823,7 +872,11 @@ async function openGroupDetail(gid){
       ${g.description?`<div class="kv"><div class="k">${I.info}</div><div><div class="kk">ABOUT</div><div class="vv" style="font-weight:500">${esc(g.description)}</div></div></div>`:''}
       <div class="kv"><div class="k">${I.users}</div><div style="flex:1"><div class="kk">INVITE CODE</div><div class="vv" style="display:flex;align-items:center;gap:10px;justify-content:space-between">${esc(g.invite_code)}<button class="btn sm ghost" onclick="CV.copyInvite('${esc(g.invite_code)}')">Copy invite</button></div></div></div>
       <div class="section-h" style="margin-top:18px">Members · ${members.length}</div>
-      <div class="people">${members.map(m=>`<div class="person"><span class="ava ${m.user_id===store.user.id?'':'mut'}" ${m.photo_url?`style="background-image:url(${esc(m.photo_url)})"`:''}>${inits(m.name||'?')}</span><div><div class="nm">${esc(m.name||'Member')}${m.user_id===store.user.id?' <span class="tag-you">You</span>':''}</div><div class="rl">${m.is_admin?'Admin':'Member'}</div></div></div>`).join('')}</div>`;
+      <div class="people">${members.map(m=>`<div class="person"><span class="ava ${m.user_id===store.user.id?'':'mut'}" ${m.photo_url?`style="background-image:url(${esc(m.photo_url)})"`:''}>${inits(m.name||'?')}</span><div><div class="nm">${esc(m.name||'Member')}${m.user_id===store.user.id?' <span class="tag-you">You</span>':''}</div><div class="rl">${m.is_admin?'Admin':'Member'}</div></div></div>`).join('')}</div>
+      ${g.created_by===store.user.id?`
+        <div class="section-h" style="margin-top:22px;color:var(--danger)">Manage group</div>
+        <button class="btn ghost sm" style="width:100%;margin-bottom:9px" onclick="CV.openEditGroup('${g.id}')">${I.edit} Edit group details</button>
+        <button class="btn danger sm" style="width:100%" onclick="CV.confirmDeleteGroup('${g.id}')">Delete group</button>`:''}`;
   }catch(e){ const box=$('#gd-body'); if(box) box.innerHTML=`<div class="sr">Couldn’t load members — ${esc(e.message||'error')}</div>`; }
 }
 function copyInvite(code){
@@ -875,6 +928,7 @@ export const CV = {
   setView, toggleAvail, cycleType, openTimeFilter, quickTime, applyTimeFilter, widenTime, toggleLoc,
   openGroupSwitcher, switchGroup, tryJoinGroup, enterGroup, openCreateGroup, doCreateGroup, acSearchG, pickAddrG,
   openGroupDetail, copyInvite, confirmDeleteAccount, delCheck, doDeleteAccount,
+  openEditGroup, acSearchGE, pickAddrGE, saveGroupEdit, confirmDeleteGroup, gdelCheck, doDeleteGroup,
   markAllRead, openEditProfile, saveProfile, pickPhoto, confirmLogout, doLogout,
   setRidesView, calPrev, calNext, calSelectDay,
   openOccurrence, cancelOccDate, doCancelOcc, editOccDate, doEditOcc, skipOccDate, doSkipOcc,

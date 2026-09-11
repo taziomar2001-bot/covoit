@@ -159,6 +159,8 @@ drop policy if exists groups_insert on public.groups;
 create policy groups_insert on public.groups for insert with check (created_by = auth.uid());
 drop policy if exists groups_creator_update on public.groups;
 create policy groups_creator_update on public.groups for update using (created_by = auth.uid());
+drop policy if exists groups_creator_delete on public.groups;
+create policy groups_creator_delete on public.groups for delete using (created_by = auth.uid());
 
 -- group_members: you can see the membership rows of groups you belong to; you can
 -- add yourself (join is normally done via join_group RPC); you can remove yourself.

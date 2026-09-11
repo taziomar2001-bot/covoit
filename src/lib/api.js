@@ -61,6 +61,14 @@ export async function groupMemberCount(groupId) {
   const { count } = await supabase.from('group_members').select('*', { count: 'exact', head: true }).eq('group_id', groupId);
   return count || 0;
 }
+export async function updateGroup(id, patch) {
+  const { error } = await supabase.from('groups').update(patch).eq('id', id);
+  if (error) throw error;
+}
+export async function deleteGroup(id) {
+  const { error } = await supabase.from('groups').delete().eq('id', id);
+  if (error) throw error;
+}
 export async function joinGroup(code) {
   const { data, error } = await supabase.rpc('join_group', { p_code: code });
   if (error) throw error;
