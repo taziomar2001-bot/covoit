@@ -307,6 +307,10 @@ textarea.inp{resize:none;min-height:74px}
 .auth-h{font-size:26px;font-weight:700;letter-spacing:-.04em}
 .auth-p{color:var(--ink-3);font-size:14.5px;margin-top:7px;max-width:300px;margin-inline:auto}
 .auth-form{margin-top:30px;flex:1}
+.btn-google{background:var(--surface);color:var(--ink);border:1.5px solid var(--line);font-weight:600}
+.btn-google svg{width:18px;height:18px}
+.auth-or{display:flex;align-items:center;gap:12px;margin:15px 0;color:var(--ink-3);font-size:12.5px;font-weight:600}
+.auth-or::before,.auth-or::after{content:"";flex:1;height:1px;background:var(--line)}
 .auth-link{text-align:center;color:var(--ink-2);font-size:14px;margin-top:18px}
 .auth-link b{color:var(--accent);font-weight:600}
 .grid2{display:flex;gap:10px}.grid2 .field{flex:1}

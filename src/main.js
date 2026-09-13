@@ -58,6 +58,10 @@ async function boot(session){
   }
   store.tab='home'; enterApp();
   try{ subscribeRealtime(session.user.id); }catch(e){}
+  // New Google sign-ins have no phone yet — nudge them to add it (needed for ride contact).
+  if(store.profile && !((store.profile.phone||'').trim())){
+    setTimeout(()=>{ toast('Add your phone so ride-mates can reach you'); CV.openEditProfile(); }, 600);
+  }
 }
 
 // live notification badge + list updates
