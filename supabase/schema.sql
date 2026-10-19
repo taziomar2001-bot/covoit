@@ -435,6 +435,7 @@ exception when duplicate_object then null; when others then null; end $$;
 -- ============================================================================
 -- v2: per-date cancellations, passenger seat-skips, recurring end date, edits
 -- ============================================================================
+alter table public.rides add column if not exists start_date date;
 alter table public.rides add column if not exists end_date date;
 alter table public.ride_exceptions add column if not exists out_cancelled boolean not null default false;
 alter table public.ride_exceptions add column if not exists ret_cancelled boolean not null default false;
